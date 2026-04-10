@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run:*)",
+      "Bash(kill %1)",
+      "Bash(npm install:*)"
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+FROM node:20-alpine AS deps
+WORKDIR /repo
+COPY package.json package-lock.json* ./
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/domain/package.json ./packages/domain/
+COPY packages/voice-adapters/package.json ./packages/voice-adapters/
+COPY apps/worker-voice/package.json ./apps/worker-voice/
+RUN npm ci
+
+FROM deps AS builder
+COPY tsconfig.base.json ./
+COPY packages/ ./packages/
+COPY apps/worker-voice/ ./apps/worker-voice/
+RUN npm run build -w packages/shared-types
+RUN npm run build -w packages/domain
+RUN npm run build -w packages/voice-adapters
+RUN npm run build -w apps/worker-voice
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+COPY --from=builder /repo/apps/worker-voice/dist ./dist
+COPY --from=builder /repo/apps/worker-voice/package.json ./
+COPY --from=builder /repo/node_modules ./node_modules
+EXPOSE 3002
+CMD ["node", "dist/index.js"]

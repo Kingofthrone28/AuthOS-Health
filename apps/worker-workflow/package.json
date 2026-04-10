@@ -1,0 +1,31 @@
+{
+  "name": "@authos/worker-workflow",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@authos/shared-types": "*",
+    "@authos/domain": "*",
+    "@authos/audit": "*",
+    "express": "^4.19.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "typescript": "*",
+    "@types/express": "^4.17.0",
+    "@types/node": "*",
+    "@types/jest": "^29.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "tsx": "^4.0.0"
+  }
+}

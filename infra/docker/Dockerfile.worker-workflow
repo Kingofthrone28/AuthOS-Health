@@ -1,0 +1,25 @@
+FROM node:20-alpine AS deps
+WORKDIR /repo
+COPY package.json package-lock.json* ./
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/domain/package.json ./packages/domain/
+COPY packages/audit/package.json ./packages/audit/
+COPY apps/worker-workflow/package.json ./apps/worker-workflow/
+RUN npm ci
+
+FROM deps AS builder
+COPY tsconfig.base.json ./
+COPY packages/ ./packages/
+COPY apps/worker-workflow/ ./apps/worker-workflow/
+RUN npm run build -w packages/shared-types
+RUN npm run build -w packages/domain
+RUN npm run build -w packages/audit
+RUN npm run build -w apps/worker-workflow
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+COPY --from=builder /repo/apps/worker-workflow/dist ./dist
+COPY --from=builder /repo/apps/worker-workflow/package.json ./
+COPY --from=builder /repo/node_modules ./node_modules
+EXPOSE 3003
+CMD ["node", "dist/index.js"]
