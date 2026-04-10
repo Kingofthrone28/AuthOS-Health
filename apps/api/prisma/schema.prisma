@@ -1,0 +1,330 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  admin
+  clinician
+  auth_specialist
+  manager
+  read_only
+}
+
+enum CasePriority {
+  standard
+  expedited
+  urgent
+}
+
+enum CaseStatus {
+  new
+  requirements_found
+  docs_missing
+  ready_to_submit
+  submitted
+  pending_payer
+  more_info_requested
+  peer_review_needed
+  approved
+  denied
+  appealed
+  closed
+}
+
+enum SubmissionProtocol {
+  pas
+  fhir
+  x12
+  portal
+}
+
+enum PayerDecision {
+  approved
+  denied
+  more_info
+  peer_review
+  pending
+}
+
+enum ExtractedEventType {
+  reference_number
+  auth_status
+  missing_document
+  denial_reason
+  peer_review_required
+  callback_deadline
+  approval_number
+  other
+}
+
+enum ReviewStatus {
+  pending
+  approved
+  rejected
+}
+
+enum RequirementSource {
+  crd
+  dtr
+  manual
+}
+
+// ─── Core entities ────────────────────────────────────────────────────────────
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  users               User[]
+  cases               AuthorizationCase[]
+  auditEvents         AuditEvent[]
+}
+
+model User {
+  id        String   @id @default(cuid())
+  tenantId  String
+  email     String
+  name      String
+  role      UserRole @default(auth_specialist)
+  createdAt DateTime @default(now())
+
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+}
+
+// ─── Healthcare reference entities ───────────────────────────────────────────
+
+model PatientRef {
+  id         String  @id @default(cuid())
+  tenantId   String
+  fhirId     String
+  mrn        String?
+  name       String
+  dob        String
+  gender     String?
+
+  cases      AuthorizationCase[]
+
+  @@unique([tenantId, fhirId])
+  @@index([tenantId])
+}
+
+model CoverageRef {
+  id           String  @id @default(cuid())
+  tenantId     String
+  patientRefId String
+  payerName    String
+  payerId      String?
+  planName     String?
+  memberId     String
+  groupId      String?
+
+  cases        AuthorizationCase[]
+
+  @@index([tenantId])
+}
+
+model OrderRef {
+  id                    String   @id @default(cuid())
+  tenantId              String
+  fhirId                String
+  patientRefId          String
+  serviceType           String
+  serviceCode           String?
+  orderingProviderRefId String?
+  requestedAt           DateTime
+
+  cases                 AuthorizationCase[]
+
+  @@unique([tenantId, fhirId])
+  @@index([tenantId])
+}
+
+// ─── Workflow entities ────────────────────────────────────────────────────────
+
+model AuthorizationCase {
+  id            String       @id @default(cuid())
+  tenantId      String
+  patientRefId  String
+  coverageRefId String
+  orderRefId    String?
+  serviceType   String
+  serviceCode   String?
+  priority      CasePriority @default(standard)
+  status        CaseStatus   @default(new)
+  payerName     String
+  payerCaseRef  String?
+  dueAt         DateTime?
+  createdBy     String
+  assignedTo    String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  tenant        Tenant       @relation(fields: [tenantId], references: [id])
+  patient       PatientRef   @relation(fields: [patientRefId], references: [id])
+  coverage      CoverageRef  @relation(fields: [coverageRefId], references: [id])
+  order         OrderRef?    @relation(fields: [orderRefId], references: [id])
+
+  requirements  AuthorizationRequirement[]
+  submissions   Submission[]
+  tasks         Task[]
+  attachments   Attachment[]
+  transcripts   CallTranscript[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, assignedTo])
+  @@index([tenantId, dueAt])
+}
+
+model AuthorizationRequirement {
+  id          String            @id @default(cuid())
+  caseId      String
+  tenantId    String
+  description String
+  required    Boolean           @default(true)
+  completed   Boolean           @default(false)
+  completedAt DateTime?
+  completedBy String?
+  source      RequirementSource @default(manual)
+
+  case        AuthorizationCase @relation(fields: [caseId], references: [id])
+
+  @@index([caseId])
+  @@index([tenantId])
+}
+
+model Submission {
+  id          String             @id @default(cuid())
+  caseId      String
+  tenantId    String
+  protocol    SubmissionProtocol
+  payloadRef  String?
+  submittedAt DateTime           @default(now())
+  submittedBy String
+
+  case        AuthorizationCase  @relation(fields: [caseId], references: [id])
+  responses   PayerResponse[]
+
+  @@index([caseId])
+}
+
+model PayerResponse {
+  id            String        @id @default(cuid())
+  submissionId  String
+  caseId        String
+  tenantId      String
+  decision      PayerDecision
+  denialReason  String?
+  denialCode    String?
+  authNumber    String?
+  rawResponseRef String?
+  receivedAt    DateTime      @default(now())
+
+  submission    Submission    @relation(fields: [submissionId], references: [id])
+
+  @@index([caseId])
+}
+
+model Task {
+  id          String            @id @default(cuid())
+  caseId      String
+  tenantId    String
+  type        String
+  description String
+  assignedTo  String?
+  completedAt DateTime?
+  dueAt       DateTime?
+  createdAt   DateTime          @default(now())
+
+  case        AuthorizationCase @relation(fields: [caseId], references: [id])
+
+  @@index([caseId])
+  @@index([tenantId, assignedTo])
+}
+
+model CallTranscript {
+  id              String            @id @default(cuid())
+  caseId          String
+  tenantId        String
+  callSid         String            @unique
+  direction       String
+  startedAt       DateTime
+  endedAt         DateTime?
+  durationSeconds Int?
+  transcriptText  String?
+  transcriptRef   String?
+
+  case            AuthorizationCase  @relation(fields: [caseId], references: [id])
+  extractedEvents ExtractedEvent[]
+
+  @@index([caseId])
+}
+
+model ExtractedEvent {
+  id           String             @id @default(cuid())
+  transcriptId String
+  caseId       String
+  tenantId     String
+  eventType    ExtractedEventType
+  value        String
+  confidence   Float
+  reviewStatus ReviewStatus       @default(pending)
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  extractedAt  DateTime           @default(now())
+
+  transcript   CallTranscript     @relation(fields: [transcriptId], references: [id])
+
+  @@index([caseId])
+  @@index([tenantId, reviewStatus])
+}
+
+model Attachment {
+  id             String            @id @default(cuid())
+  caseId         String
+  tenantId       String
+  fileName       String
+  mimeType       String
+  sizeBytes      Int
+  storageRef     String
+  classification String?
+  uploadedBy     String
+  uploadedAt     DateTime          @default(now())
+
+  case           AuthorizationCase @relation(fields: [caseId], references: [id])
+
+  @@index([caseId])
+  @@index([tenantId])
+}
+
+// ─── Audit (append-only) ──────────────────────────────────────────────────────
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  tenantId   String
+  entityType String
+  entityId   String
+  action     String
+  actorId    String?
+  before     Json?
+  after      Json?
+  metadata   Json?
+  occurredAt DateTime @default(now())
+
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, entityId])
+  @@index([tenantId, entityType])
+  @@index([occurredAt])
+}

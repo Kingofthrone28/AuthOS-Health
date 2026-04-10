@@ -1,0 +1,18 @@
+FROM node:20-alpine AS deps
+WORKDIR /repo
+COPY package.json package-lock.json* ./
+COPY apps/mock-crd/package.json ./apps/mock-crd/
+RUN npm ci
+
+FROM deps AS builder
+COPY tsconfig.base.json ./
+COPY apps/mock-crd/ ./apps/mock-crd/
+RUN npm run build -w apps/mock-crd
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+COPY --from=builder /repo/apps/mock-crd/dist ./dist
+COPY --from=builder /repo/apps/mock-crd/package.json ./
+COPY --from=builder /repo/node_modules ./node_modules
+EXPOSE 3004
+CMD ["node", "dist/index.js"]

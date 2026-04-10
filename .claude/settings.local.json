@@ -3,7 +3,11 @@
     "allow": [
       "Bash(npm run:*)",
       "Bash(kill %1)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(docker compose:*)",
+      "Bash(docker exec:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/authos_health\" npx prisma migrate dev --name init --schema=apps/api/prisma/schema.prisma)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:postgres@localhost:5432/authos_health\" npm test -w apps/api)"
     ]
   }
 }

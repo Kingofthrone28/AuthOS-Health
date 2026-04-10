@@ -6,6 +6,7 @@ import { voiceRouter } from "./routes/voice.js";
 import { tasksRouter } from "./routes/tasks.js";
 import { attachmentsRouter } from "./routes/attachments.js";
 import { analyticsRouter } from "./routes/analytics.js";
+import { documentsRouter } from "./routes/documents.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { tenantAuth } from "./middleware/tenantAuth.js";
 
@@ -27,6 +28,7 @@ app.use("/api/cases", attachmentsRouter);
 app.use("/api/voice", voiceRouter);
 app.use("/api/tasks", tasksRouter);
 app.use("/api/analytics", analyticsRouter);
+app.use("/api/documents", documentsRouter);
 
 app.use(errorHandler);
 

@@ -70,5 +70,14 @@ services:
       api:
         condition: service_started
 
+  mock-crd:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.mock-crd
+    ports:
+      - "3004:3004"
+    environment:
+      PORT: 3004
+
 volumes:
   postgres_data:

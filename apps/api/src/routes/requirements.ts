@@ -1,33 +1,37 @@
 import { Router } from "express";
+import { ctx } from "../lib/context.js";
 
 export const requirementsRouter = Router();
 
 // POST /api/cases/:id/check-requirements
 requirementsRouter.post("/:id/check-requirements", async (req, res, next) => {
   try {
-    // TODO: trigger CRD/DTR requirements check
-    res.json({ caseId: req.params["id"], status: "requirements_check_initiated" });
-  } catch (err) {
-    next(err);
-  }
+    const tenantId = res.locals["tenantId"] as string;
+    const result = await ctx.requirementsService.discoverRequirements(
+      tenantId, req.params["id"]!,
+      res.locals["userId"] as string ?? "system"
+    );
+    res.json(result);
+  } catch (err) { next(err); }
 });
 
 // GET /api/cases/:id/requirements
 requirementsRouter.get("/:id/requirements", async (req, res, next) => {
   try {
-    // TODO: fetch requirements for case
-    res.json({ caseId: req.params["id"], requirements: [] });
-  } catch (err) {
-    next(err);
-  }
+    const tenantId = res.locals["tenantId"] as string;
+    const reqs = await ctx.requirementsService.getRequirements(tenantId, req.params["id"]!);
+    res.json(reqs);
+  } catch (err) { next(err); }
 });
 
 // POST /api/cases/:id/requirements/:reqId/complete
 requirementsRouter.post("/:id/requirements/:reqId/complete", async (req, res, next) => {
   try {
-    // TODO: mark requirement complete and emit audit event
-    res.json({ caseId: req.params["id"], requirementId: req.params["reqId"], completed: true });
-  } catch (err) {
-    next(err);
-  }
+    const tenantId = res.locals["tenantId"] as string;
+    const req_ = await ctx.requirementsService.completeRequirement(
+      tenantId, req.params["id"]!, req.params["reqId"]!,
+      res.locals["userId"] as string ?? "system"
+    );
+    res.json(req_);
+  } catch (err) { next(err); }
 });
