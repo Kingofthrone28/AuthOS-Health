@@ -4,19 +4,22 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx watch src/index.ts",
+    "build": "prisma generate --schema=../api/prisma/schema.prisma && tsc",
+    "dev": "prisma generate --schema=../api/prisma/schema.prisma && tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "type-check": "tsc --noEmit",
+    "type-check": "prisma generate --schema=../api/prisma/schema.prisma && tsc --noEmit",
     "lint": "eslint src",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test": "node --experimental-vm-modules ../../node_modules/.bin/jest",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@authos/shared-types": "*",
     "@authos/domain": "*",
     "@authos/audit": "*",
+    "@authos/payer-adapters": "*",
+    "@prisma/client": "^6.19.3",
     "express": "^4.19.0",
+    "prisma": "^6.19.3",
     "zod": "^3.23.0"
   },
   "devDependencies": {

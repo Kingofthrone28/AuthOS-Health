@@ -7,6 +7,7 @@ import { tasksRouter } from "./routes/tasks.js";
 import { attachmentsRouter } from "./routes/attachments.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { documentsRouter } from "./routes/documents.js";
+import { smartRouter } from "./routes/smart.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { tenantAuth } from "./middleware/tenantAuth.js";
 
@@ -18,6 +19,9 @@ app.use(express.json());
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+// SMART launch — no tenant auth (EHR redirects here before session exists)
+app.use("/smart", smartRouter);
 
 // All API routes require tenant-aware auth
 app.use("/api", tenantAuth);

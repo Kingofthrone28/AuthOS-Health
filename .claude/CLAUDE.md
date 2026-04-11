@@ -3,6 +3,7 @@
 - See `./rules/code-style.md` for coding standards, architecture conventions, testing expectations, and code review rules.
 - See `./rules/testing.md` for testing conventions, workflow coverage, release gates, and QA expectations.
 - See `./rules/dashboard.md` for the Next.js dashboard shell architecture, rendering rules, container/presentation conventions, and PR checklist.
+- see `./rules/twilio_voice_transcript.md`for worker WebSocket, streaming speech-to-text, final transcript text
 
 # CLAUDE.md
 

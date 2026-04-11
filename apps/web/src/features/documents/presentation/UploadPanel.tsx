@@ -49,6 +49,11 @@ export function UploadPanel() {
       setError("A case ID is required to upload a document.");
       return;
     }
+    const tenantId = window.sessionStorage.getItem("tenantId")?.trim();
+    if (!tenantId) {
+      setError("A tenant is required to upload a document.");
+      return;
+    }
     setUploading(true);
     setError(null);
     try {
@@ -59,7 +64,7 @@ export function UploadPanel() {
           method:  "POST",
           headers: {
             "Content-Type": "application/octet-stream",
-            "x-tenant-id":  "demo-tenant", // TODO: replace with session tenant
+            "x-tenant-id":  tenantId,
           },
           body: buffer,
         }

@@ -6,7 +6,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "build": "tsc",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file=.env src/index.ts",
     "start": "node dist/index.js",
     "type-check": "tsc --noEmit",
     "lint": "eslint src",
@@ -16,6 +16,7 @@
   "dependencies": {
     "@authos/audit": "*",
     "@authos/domain": "*",
+    "@authos/payer-adapters": "*",
     "@authos/shared-types": "*",
     "@prisma/client": "^6.19.3",
     "express": "^4.19.0",

@@ -123,6 +123,7 @@ model PatientRef {
 model CoverageRef {
   id           String  @id @default(cuid())
   tenantId     String
+  fhirId       String?
   patientRefId String
   payerName    String
   payerId      String?
@@ -132,6 +133,7 @@ model CoverageRef {
 
   cases        AuthorizationCase[]
 
+  @@unique([tenantId, fhirId])
   @@index([tenantId])
 }
 
@@ -154,22 +156,24 @@ model OrderRef {
 // ─── Workflow entities ────────────────────────────────────────────────────────
 
 model AuthorizationCase {
-  id            String       @id @default(cuid())
-  tenantId      String
-  patientRefId  String
-  coverageRefId String
-  orderRefId    String?
-  serviceType   String
-  serviceCode   String?
-  priority      CasePriority @default(standard)
-  status        CaseStatus   @default(new)
-  payerName     String
-  payerCaseRef  String?
-  dueAt         DateTime?
-  createdBy     String
-  assignedTo    String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  id              String       @id @default(cuid())
+  tenantId        String
+  patientRefId    String
+  coverageRefId   String
+  orderRefId      String?
+  serviceType     String
+  serviceCode     String?
+  priority        CasePriority @default(standard)
+  status          CaseStatus   @default(new)
+  payerName       String
+  payerCaseRef    String?
+  dueAt           DateTime?
+  createdBy       String
+  assignedTo      String?
+  escalatedAt     DateTime?
+  lastFollowUpAt  DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   tenant        Tenant       @relation(fields: [tenantId], references: [id])
   patient       PatientRef   @relation(fields: [patientRefId], references: [id])
@@ -210,6 +214,10 @@ model Submission {
   tenantId    String
   protocol    SubmissionProtocol
   payloadRef  String?
+  status      String             @default("pending")
+  retryCount  Int                @default(0)
+  maxRetries  Int                @default(3)
+  nextRetryAt DateTime?
   submittedAt DateTime           @default(now())
   submittedBy String
 
@@ -217,6 +225,7 @@ model Submission {
   responses   PayerResponse[]
 
   @@index([caseId])
+  @@index([tenantId, status])
 }
 
 model PayerResponse {
@@ -242,7 +251,9 @@ model Task {
   tenantId    String
   type        String
   description String
+  status      String            @default("open")
   assignedTo  String?
+  completedBy String?
   completedAt DateTime?
   dueAt       DateTime?
   createdAt   DateTime          @default(now())
@@ -251,6 +262,7 @@ model Task {
 
   @@index([caseId])
   @@index([tenantId, assignedTo])
+  @@index([tenantId, status])
 }
 
 model CallTranscript {

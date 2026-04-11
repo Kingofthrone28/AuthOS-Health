@@ -1,0 +1,18 @@
+FROM node:20-alpine AS deps
+WORKDIR /repo
+COPY package.json package-lock.json* ./
+COPY apps/mock-payer/package.json ./apps/mock-payer/
+RUN npm ci
+
+FROM deps AS builder
+COPY tsconfig.base.json ./
+COPY apps/mock-payer/ ./apps/mock-payer/
+RUN npm run build -w apps/mock-payer
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+COPY --from=builder /repo/apps/mock-payer/dist ./dist
+COPY --from=builder /repo/apps/mock-payer/package.json ./
+COPY --from=builder /repo/node_modules ./node_modules
+EXPOSE 3006
+CMD ["node", "dist/index.js"]

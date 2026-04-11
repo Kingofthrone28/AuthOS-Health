@@ -14,8 +14,8 @@ app.get("/health", (_req, res) => {
 // In production, wire these to BullMQ, Temporal, or a cron-based queue.
 app.post("/triggers/sla-check", async (_req, res, next) => {
   try {
-    await slaProcessor.run();
-    res.json({ ran: "sla-check" });
+    const result = await slaProcessor.run();
+    res.json({ ran: "sla-check", ...result });
   } catch (err) {
     next(err);
   }
@@ -23,8 +23,8 @@ app.post("/triggers/sla-check", async (_req, res, next) => {
 
 app.post("/triggers/escalation", async (_req, res, next) => {
   try {
-    await escalationProcessor.run();
-    res.json({ ran: "escalation" });
+    const result = await escalationProcessor.run();
+    res.json({ ran: "escalation", ...result });
   } catch (err) {
     next(err);
   }
@@ -32,8 +32,8 @@ app.post("/triggers/escalation", async (_req, res, next) => {
 
 app.post("/triggers/retry", async (_req, res, next) => {
   try {
-    await retryProcessor.run();
-    res.json({ ran: "retry" });
+    const result = await retryProcessor.run();
+    res.json({ ran: "retry", ...result });
   } catch (err) {
     next(err);
   }

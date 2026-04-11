@@ -1,11 +1,14 @@
 import { Router } from "express";
+import { ctx } from "../lib/context.js";
 
 export const analyticsRouter = Router();
 
 // GET /api/analytics/turnaround
 analyticsRouter.get("/turnaround", async (req, res, next) => {
   try {
-    res.json({ metric: "turnaround", data: [] });
+    const tenantId = res.locals["tenantId"] as string;
+    const metrics = await ctx.analyticsService.turnaroundMetrics(tenantId);
+    res.json(metrics);
   } catch (err) {
     next(err);
   }
@@ -14,7 +17,9 @@ analyticsRouter.get("/turnaround", async (req, res, next) => {
 // GET /api/analytics/denials
 analyticsRouter.get("/denials", async (req, res, next) => {
   try {
-    res.json({ metric: "denials", data: [] });
+    const tenantId = res.locals["tenantId"] as string;
+    const metrics = await ctx.analyticsService.denialMetrics(tenantId);
+    res.json(metrics);
   } catch (err) {
     next(err);
   }
@@ -23,7 +28,9 @@ analyticsRouter.get("/denials", async (req, res, next) => {
 // GET /api/analytics/payers
 analyticsRouter.get("/payers", async (req, res, next) => {
   try {
-    res.json({ metric: "payers", data: [] });
+    const tenantId = res.locals["tenantId"] as string;
+    const metrics = await ctx.analyticsService.payerMetrics(tenantId);
+    res.json(metrics);
   } catch (err) {
     next(err);
   }
@@ -32,7 +39,9 @@ analyticsRouter.get("/payers", async (req, res, next) => {
 // GET /api/analytics/staff
 analyticsRouter.get("/staff", async (req, res, next) => {
   try {
-    res.json({ metric: "staff", data: [] });
+    const tenantId = res.locals["tenantId"] as string;
+    const metrics = await ctx.analyticsService.staffMetrics(tenantId);
+    res.json(metrics);
   } catch (err) {
     next(err);
   }

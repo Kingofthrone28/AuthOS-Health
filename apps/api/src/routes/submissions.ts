@@ -1,12 +1,16 @@
 import { Router } from "express";
+import { ctx } from "../lib/context.js";
 
 export const submissionsRouter = Router();
 
 // POST /api/cases/:id/build-submission
 submissionsRouter.post("/:id/build-submission", async (req, res, next) => {
   try {
-    // TODO: build submission packet via payer-adapters
-    res.json({ caseId: req.params["id"], status: "packet_built" });
+    const tenantId = res.locals["tenantId"] as string;
+    const caseId = req.params["id"]!;
+
+    const packet = await ctx.submissionService.buildPacket(tenantId, caseId);
+    res.json(packet);
   } catch (err) {
     next(err);
   }
@@ -15,8 +19,12 @@ submissionsRouter.post("/:id/build-submission", async (req, res, next) => {
 // POST /api/cases/:id/submit
 submissionsRouter.post("/:id/submit", async (req, res, next) => {
   try {
-    // TODO: submit to payer via payer adapter, store Submission record
-    res.json({ caseId: req.params["id"], status: "submitted" });
+    const tenantId = res.locals["tenantId"] as string;
+    const caseId = req.params["id"]!;
+    const submittedBy = (res.locals["userId"] as string) ?? "system";
+
+    const result = await ctx.submissionService.submit(tenantId, caseId, submittedBy);
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -25,8 +33,11 @@ submissionsRouter.post("/:id/submit", async (req, res, next) => {
 // GET /api/cases/:id/submissions
 submissionsRouter.get("/:id/submissions", async (req, res, next) => {
   try {
-    // TODO: list submissions for case
-    res.json({ caseId: req.params["id"], submissions: [] });
+    const tenantId = res.locals["tenantId"] as string;
+    const caseId = req.params["id"]!;
+
+    const submissions = await ctx.submissionService.listSubmissions(tenantId, caseId);
+    res.json({ caseId, submissions });
   } catch (err) {
     next(err);
   }
@@ -35,8 +46,12 @@ submissionsRouter.get("/:id/submissions", async (req, res, next) => {
 // POST /api/cases/:id/resubmit
 submissionsRouter.post("/:id/resubmit", async (req, res, next) => {
   try {
-    // TODO: resubmit case (appeal path)
-    res.json({ caseId: req.params["id"], status: "resubmitted" });
+    const tenantId = res.locals["tenantId"] as string;
+    const caseId = req.params["id"]!;
+    const submittedBy = (res.locals["userId"] as string) ?? "system";
+
+    const result = await ctx.submissionService.resubmit(tenantId, caseId, submittedBy);
+    res.json(result);
   } catch (err) {
     next(err);
   }

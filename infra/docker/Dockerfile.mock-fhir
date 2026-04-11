@@ -1,0 +1,18 @@
+FROM node:20-alpine AS deps
+WORKDIR /repo
+COPY package.json package-lock.json* ./
+COPY apps/mock-fhir/package.json ./apps/mock-fhir/
+RUN npm ci
+
+FROM deps AS builder
+COPY tsconfig.base.json ./
+COPY apps/mock-fhir/ ./apps/mock-fhir/
+RUN npm run build -w apps/mock-fhir
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+COPY --from=builder /repo/apps/mock-fhir/dist ./dist
+COPY --from=builder /repo/apps/mock-fhir/package.json ./
+COPY --from=builder /repo/node_modules ./node_modules
+EXPOSE 3005
+CMD ["node", "dist/index.js"]
