@@ -8,17 +8,33 @@ import { attachmentsRouter } from "./routes/attachments.js";
 import { analyticsRouter } from "./routes/analytics.js";
 import { documentsRouter } from "./routes/documents.js";
 import { smartRouter } from "./routes/smart.js";
+import { authRouter } from "./routes/auth.js";
+import { tenantsRouter } from "./routes/tenants.js";
+import { auditRouter } from "./routes/audit.js";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { tenantAuth } from "./middleware/tenantAuth.js";
+import { getPrismaClient } from "./lib/prisma.js";
 
 const app = express();
 
 app.use(express.json());
 
-// Health check — no auth required
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
+
+app.get("/ready", async (_req, res) => {
+  try {
+    const db = getPrismaClient();
+    await db.$queryRaw`SELECT 1`;
+    res.json({ status: "ready" });
+  } catch {
+    res.status(503).json({ status: "not ready" });
+  }
+});
+
+// Public auth routes — no tenant auth required
+app.use("/auth", authRouter);
 
 // SMART launch — no tenant auth (EHR redirects here before session exists)
 app.use("/smart", smartRouter);
@@ -33,6 +49,8 @@ app.use("/api/voice", voiceRouter);
 app.use("/api/tasks", tasksRouter);
 app.use("/api/analytics", analyticsRouter);
 app.use("/api/documents", documentsRouter);
+app.use("/api/tenants", tenantsRouter);
+app.use("/api/audit", auditRouter);
 
 app.use(errorHandler);
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { useSession } from "next-auth/react";
 import { Upload, X, FileText } from "lucide-react";
 
 const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/tiff"];
@@ -12,6 +13,7 @@ interface SelectedFile {
 }
 
 export function UploadPanel() {
+  const { data: session } = useSession();
   const [selected, setSelected] = useState<SelectedFile | null>(null);
   const [caseId, setCaseId] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -49,7 +51,7 @@ export function UploadPanel() {
       setError("A case ID is required to upload a document.");
       return;
     }
-    const tenantId = window.sessionStorage.getItem("tenantId")?.trim();
+    const tenantId = session?.tenantId ?? window.sessionStorage.getItem("tenantId")?.trim();
     if (!tenantId) {
       setError("A tenant is required to upload a document.");
       return;

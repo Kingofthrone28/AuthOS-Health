@@ -1,0 +1,117 @@
+# Single-tenant deployment template.
+# For dedicated customer instances with stronger isolation.
+#
+# Usage:
+#   cp single-tenant.env.example .env
+#   # edit .env with your values
+#   docker compose -f docker-compose.single-tenant.yml up -d
+#
+# The API will auto-provision the tenant on first boot when TENANT_MODE=single.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-authos_health}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.api
+    ports:
+      - "${API_PORT:-3001}:3001"
+    environment:
+      PORT: 3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-authos_health}
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+      TENANT_MODE: single
+      TENANT_NAME: ${TENANT_NAME}
+      TENANT_SLUG: ${TENANT_SLUG}
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_NAME: ${ADMIN_NAME:-Admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      SSO_PROVIDER: ${SSO_PROVIDER:-}
+      SSO_ISSUER_URL: ${SSO_ISSUER_URL:-}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
+      SSO_CLIENT_SECRET: ${SSO_CLIENT_SECRET:-}
+      PAYER_URL: ${PAYER_URL:-}
+      FHIR_SERVER_URL: ${FHIR_SERVER_URL:-}
+      WEB_URL: ${WEB_URL:-http://localhost:3000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.web
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      API_URL: http://api:3001
+      NEXTAUTH_SECRET: ${JWT_SECRET}
+      NEXTAUTH_URL: ${WEB_URL:-http://localhost:3000}
+    depends_on:
+      - api
+
+  worker-voice:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.worker-voice
+    ports:
+      - "${WORKER_VOICE_PORT:-3002}:3002"
+    environment:
+      PORT: 3002
+      API_URL: http://api:3001
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      - api
+
+  worker-workflow:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.worker-workflow
+    ports:
+      - "${WORKER_WORKFLOW_PORT:-3003}:3003"
+    environment:
+      PORT: 3003
+      API_URL: http://api:3001
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-authos_health}
+      REDIS_URL: redis://redis:6379
+      PAYER_URL: ${PAYER_URL:-}
+      INTERNAL_SECRET: ${INTERNAL_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+volumes:
+  postgres_data:
+    labels:
+      com.authos.tenant: "${TENANT_SLUG}"

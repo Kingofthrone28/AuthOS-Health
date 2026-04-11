@@ -1,9 +1,11 @@
 import { apiFetch } from "@/lib/api/client";
+import { requireSession } from "@/lib/session";
 import type { TurnaroundData, DenialData, PayerData, StaffData } from "../types";
 import { AnalyticsPage } from "../presentation/AnalyticsPage";
 
 export async function AnalyticsPageContainer() {
-  const tenantId = "default";
+  const session = await requireSession();
+  const tenantId = session.tenantId;
 
   const [turnaround, denials, payers, staff] = await Promise.all([
     apiFetch<TurnaroundData>("/api/analytics/turnaround", { tenantId }),

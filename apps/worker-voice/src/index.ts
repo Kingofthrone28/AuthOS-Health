@@ -11,6 +11,17 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/ready", async (_req, res) => {
+  try {
+    const apiUrl = process.env["API_URL"] ?? "http://localhost:3001";
+    const apiRes = await fetch(`${apiUrl}/health`);
+    if (!apiRes.ok) throw new Error("API unreachable");
+    res.json({ status: "ready" });
+  } catch {
+    res.status(503).json({ status: "not ready" });
+  }
+});
+
 app.use("/voice/webhooks", transcriptRouter);
 app.use("/voice/webhooks", extractionRouter);
 

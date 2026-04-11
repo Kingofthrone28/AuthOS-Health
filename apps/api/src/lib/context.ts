@@ -8,6 +8,8 @@ import { EhrService } from "../services/ehrService.js";
 import { SubmissionService } from "../services/submissionService.js";
 import { TaskService } from "../services/taskService.js";
 import { AnalyticsService } from "../services/analyticsService.js";
+import { TenantService } from "../services/tenantService.js";
+import { AuditExportService } from "../services/auditExportService.js";
 import type { PrismaClient } from "@prisma/client";
 
 export interface AppContext {
@@ -20,6 +22,8 @@ export interface AppContext {
   submissionService:   SubmissionService;
   taskService:         TaskService;
   analyticsService:    AnalyticsService;
+  tenantService:       TenantService;
+  auditExportService:  AuditExportService;
 }
 
 export function buildContext(db: PrismaClient = getPrismaClient()): AppContext {
@@ -34,6 +38,8 @@ export function buildContext(db: PrismaClient = getPrismaClient()): AppContext {
     submissionService:   new SubmissionService(db, auditService),
     taskService:         new TaskService(db, auditService),
     analyticsService:    new AnalyticsService(db),
+    tenantService:       new TenantService(db, auditService),
+    auditExportService:  new AuditExportService(db),
   };
 }
 

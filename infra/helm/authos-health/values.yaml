@@ -1,0 +1,112 @@
+global:
+  tenantMode: multi  # "multi" or "single"
+  image:
+    registry: ""
+    tag: latest
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+api:
+  replicas: 2
+  image:
+    repository: authos-health/api
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  env: {}
+  service:
+    type: ClusterIP
+    port: 3001
+
+web:
+  replicas: 2
+  image:
+    repository: authos-health/web
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  env: {}
+  service:
+    type: ClusterIP
+    port: 3000
+
+workers:
+  voice:
+    replicas: 1
+    image:
+      repository: authos-health/worker-voice
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env: {}
+  workflow:
+    replicas: 1
+    image:
+      repository: authos-health/worker-workflow
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    env: {}
+
+postgresql:
+  external:
+    host: ""
+    port: 5432
+    database: authos_health
+    existingSecret: ""
+    secretKeys:
+      username: username
+      password: password
+
+redis:
+  external:
+    host: ""
+    port: 6379
+    existingSecret: ""
+    secretKeys:
+      password: password
+
+sso:
+  enabled: false
+  issuerUrl: ""
+  clientId: ""
+  clientSecretRef: ""
+
+ingress:
+  enabled: false
+  className: nginx
+  host: authos.example.com
+  tls:
+    enabled: false
+    secretName: authos-tls
+  annotations: {}
+
+secrets:
+  jwtSecret: ""
+  internalSecret: ""
+
+singleTenant:
+  tenantName: ""
+  tenantSlug: ""
+  adminEmail: ""
+  adminName: Admin
+  adminPassword: ""
+
+migrate:
+  enabled: true

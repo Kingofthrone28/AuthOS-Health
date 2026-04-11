@@ -1,0 +1,13 @@
+apiVersion: v2
+name: authos-health
+description: SMART-on-FHIR prior-authorization cockpit with Voice AI
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - prior-authorization
+  - fhir
+  - healthcare
+  - voice-ai
+maintainers:
+  - name: AuthOS Health Team

@@ -1,0 +1,32 @@
+AuthOS Health has been deployed!
+
+{{- if .Values.ingress.enabled }}
+
+Access the application at:
+  https://{{ .Values.ingress.host }}
+
+{{- else }}
+
+To access the application, run:
+  kubectl port-forward svc/{{ include "authos.fullname" . }}-web {{ .Values.web.service.port }}:{{ .Values.web.service.port }}
+
+Then open http://localhost:{{ .Values.web.service.port }}
+
+{{- end }}
+
+Tenant mode: {{ .Values.global.tenantMode }}
+
+{{- if eq .Values.global.tenantMode "single" }}
+Tenant: {{ .Values.singleTenant.tenantName }} ({{ .Values.singleTenant.tenantSlug }})
+Admin:  {{ .Values.singleTenant.adminEmail }}
+{{- end }}
+
+{{- if .Values.sso.enabled }}
+SSO is enabled with issuer: {{ .Values.sso.issuerUrl }}
+{{- end }}
+
+To check migration status:
+  kubectl get jobs -l app.kubernetes.io/component=migrate
+
+To view logs:
+  kubectl logs -l app.kubernetes.io/component=api -f

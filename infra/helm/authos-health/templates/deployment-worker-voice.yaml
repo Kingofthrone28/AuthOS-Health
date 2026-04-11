@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "authos.fullname" . }}-worker-voice
+  labels:
+    {{- include "authos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker-voice
+spec:
+  replicas: {{ .Values.workers.voice.replicas }}
+  selector:
+    matchLabels:
+      {{- include "authos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker-voice
+  template:
+    metadata:
+      labels:
+        {{- include "authos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker-voice
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: worker-voice
+          image: {{ include "authos.image" (dict "global" .Values.global "component" .Values.workers.voice) }}
+          imagePullPolicy: {{ .Values.global.image.pullPolicy }}
+          ports:
+            - containerPort: 3002
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "3002"
+            - name: API_URL
+              value: "http://{{ include "authos.fullname" . }}-api:{{ .Values.api.service.port }}"
+            - name: INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "authos.fullname" . }}-secrets
+                  key: INTERNAL_SECRET
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3002
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 3002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.workers.voice.resources | nindent 12 }}

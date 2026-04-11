@@ -10,6 +10,17 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
+app.get("/ready", async (_req, res) => {
+  try {
+    const { getPrismaClient } = await import("./lib/prisma.js");
+    const db = getPrismaClient();
+    await db.$queryRaw`SELECT 1`;
+    res.json({ status: "ready" });
+  } catch {
+    res.status(503).json({ status: "not ready" });
+  }
+});
+
 // Trigger endpoints — called by a job scheduler or message queue consumer.
 // In production, wire these to BullMQ, Temporal, or a cron-based queue.
 app.post("/triggers/sla-check", async (_req, res, next) => {

@@ -5,6 +5,23 @@ export interface Tenant {
   name: string;
   slug: string;
   createdAt: Date;
+  settings?: TenantSettings;
+}
+
+export type SsoProvider = "oidc" | "saml";
+
+export interface TenantSettings {
+  id: string;
+  tenantId: string;
+  ssoProvider?: SsoProvider;
+  ssoIssuerUrl?: string;
+  ssoClientId?: string;
+  ssoClientSecret?: string;
+  fhirServerUrl?: string;
+  payerEndpoint?: string;
+  retentionDays: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface User {
@@ -13,6 +30,7 @@ export interface User {
   email: string;
   name: string;
   role: UserRole;
+  passwordHash?: string;
   createdAt: Date;
 }
 

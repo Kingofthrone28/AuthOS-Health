@@ -1,9 +1,11 @@
 import { fetchVoiceStats, fetchTranscripts, fetchPendingEvents } from "@/lib/voice/queries";
+import { requireSession } from "@/lib/session";
 import { buildVoicePageViewModel } from "../mappers";
 import { VoicePage } from "../presentation/VoicePage";
 
 export async function VoicePageContainer() {
-  const tenantId = "default";
+  const session = await requireSession();
+  const tenantId = session.tenantId;
 
   const [stats, transcripts, pendingEvents] = await Promise.all([
     fetchVoiceStats(tenantId),
