@@ -2,8 +2,10 @@
 
 import { useState, useRef } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { Upload, X, FileText } from "lucide-react";
 
+const API_URL = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:3001";
 const ACCEPTED_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/tiff"];
 const MAX_SIZE_MB = 25;
 
@@ -14,6 +16,7 @@ interface SelectedFile {
 
 export function UploadPanel() {
   const { data: session } = useSession();
+  const router = useRouter();
   const [selected, setSelected] = useState<SelectedFile | null>(null);
   const [caseId, setCaseId] = useState("");
   const [uploading, setUploading] = useState(false);
@@ -60,14 +63,18 @@ export function UploadPanel() {
     setError(null);
     try {
       const buffer = await selected.file.arrayBuffer();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/octet-stream",
+        "x-tenant-id":  tenantId,
+      };
+      if (session?.accessToken) {
+        headers["Authorization"] = `Bearer ${session.accessToken}`;
+      }
       const res = await fetch(
-        `/api/cases/${encodeURIComponent(caseId.trim())}/attachments?fileName=${encodeURIComponent(selected.file.name)}&mimeType=${encodeURIComponent(selected.file.type)}`,
+        `${API_URL}/api/cases/${encodeURIComponent(caseId.trim())}/attachments?fileName=${encodeURIComponent(selected.file.name)}&mimeType=${encodeURIComponent(selected.file.type)}`,
         {
           method:  "POST",
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "x-tenant-id":  tenantId,
-          },
+          headers,
           body: buffer,
         }
       );
@@ -76,6 +83,8 @@ export function UploadPanel() {
       setSelected(null);
       setCaseId("");
       if (inputRef.current) inputRef.current.value = "";
+      // Re-run server components so the documents list shows the new file
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed.");
     } finally {

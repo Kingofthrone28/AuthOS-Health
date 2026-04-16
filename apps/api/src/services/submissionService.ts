@@ -63,8 +63,13 @@ export class SubmissionService {
   async submit(tenantId: string, caseId: string, submittedBy: string) {
     const packet = await this.buildPacket(tenantId, caseId);
 
-    // Transition ready_to_submit -> submitted before calling payer
-    assertValidTransition("ready_to_submit", "submitted");
+    // Re-fetch current status — buildPacket already validated it is ready_to_submit or appealed,
+    // but we need the actual value to pass into assertValidTransition rather than hard-coding it.
+    const current = await this.db.authorizationCase.findFirstOrThrow({
+      where: { id: caseId, tenantId },
+      select: { status: true },
+    });
+    assertValidTransition(current.status as AuthorizationCaseStatus, "submitted");
     await this.db.authorizationCase.update({
       where: { id: caseId },
       data: { status: "submitted" as CaseStatus },
@@ -179,7 +184,7 @@ export class SubmissionService {
     const packet = await this.buildPacket(tenantId, caseId);
 
     // Transition to submitted
-    assertValidTransition("appealed", "submitted");
+    assertValidTransition(authCase.status as AuthorizationCaseStatus, "submitted");
     await this.db.authorizationCase.update({
       where: { id: caseId },
       data: { status: "submitted" as CaseStatus },

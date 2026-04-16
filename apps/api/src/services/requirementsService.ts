@@ -69,6 +69,12 @@ export class RequirementsService {
       data:  { status: nextStatus },
     });
 
+    // Close the open "review" task that prompted this check
+    await this.db.task.updateMany({
+      where: { caseId, tenantId, type: "review", completedAt: null },
+      data:  { completedAt: new Date() },
+    });
+
     await this.audit.emit({
       tenantId,
       entityType: "AuthorizationCase",
@@ -102,12 +108,24 @@ export class RequirementsService {
       actorId,
     });
 
-    // Check if all required items are done → transition to ready_to_submit
-    const remaining = await this.db.authorizationRequirement.count({
-      where: { caseId, tenantId, required: true, completed: false },
-    });
+    // Check if all required items are done → transition to ready_to_submit,
+    // but only when the case is in a state where completing docs unblocks submission.
+    // Guards against mutating status on already-submitted/approved/denied cases.
+    const [remaining, total, theCase] = await Promise.all([
+      this.db.authorizationRequirement.count({
+        where: { caseId, tenantId, required: true, completed: false },
+      }),
+      this.db.authorizationRequirement.count({
+        where: { caseId, tenantId, required: true },
+      }),
+      this.db.authorizationCase.findFirst({
+        where: { id: caseId, tenantId },
+        select: { status: true },
+      }),
+    ]);
 
-    if (remaining === 0) {
+    const autoTransitionFrom = ["docs_missing", "more_info_requested", "requirements_found"];
+    if (remaining === 0 && total > 0 && theCase && autoTransitionFrom.includes(theCase.status)) {
       await this.db.authorizationCase.update({
         where: { id: caseId },
         data:  { status: "ready_to_submit" },

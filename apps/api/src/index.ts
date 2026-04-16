@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { casesRouter } from "./routes/cases.js";
 import { requirementsRouter } from "./routes/requirements.js";
 import { submissionsRouter } from "./routes/submissions.js";
@@ -17,7 +18,19 @@ import { getPrismaClient } from "./lib/prisma.js";
 
 const app = express();
 
+const ALLOWED_ORIGINS = (process.env["CORS_ORIGINS"] ?? "http://localhost:3000").split(",");
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    cb(new Error(`CORS: origin ${origin} not allowed`));
+  },
+  credentials: true,
+}));
+
 app.use(express.json());
+// Raw body parser for binary file uploads (application/octet-stream)
+app.use(express.raw({ type: "application/octet-stream", limit: "30mb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });

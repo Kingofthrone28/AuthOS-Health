@@ -7,4 +7,6 @@ export interface AttachmentViewModel {
   classification: string | undefined;
   uploadedBy: string;
   uploadedAt: string;
+  uploadedAtIso: string;
+  tenantId: string;
 }

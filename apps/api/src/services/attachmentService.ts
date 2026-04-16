@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
-import { DomainEvents } from "@authos/domain";
+import { DomainEvents, assertValidTransition } from "@authos/domain";
+import type { AuthorizationCaseStatus } from "@authos/shared-types";
 import type { AuditService } from "./auditService.js";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
@@ -69,7 +70,49 @@ export class AttachmentService {
       after:      { fileName: input.fileName, classification },
     });
 
+    // Auto-advance case status when a document is uploaded:
+    //   docs_missing        → ready_to_submit  (docs gap now filled)
+    //   requirements_found  → docs_missing     (acknowledge that docs are now being collected)
+    const theCase = await this.db.authorizationCase.findFirst({
+      where: { id: caseId, tenantId },
+      select: { status: true },
+    });
+    if (theCase) {
+      const current = theCase.status as AuthorizationCaseStatus;
+      const next: AuthorizationCaseStatus | null =
+        current === "docs_missing"       ? "ready_to_submit" :
+        current === "requirements_found" ? "docs_missing"    :
+        null;
+
+      if (next) {
+        try {
+          assertValidTransition(current, next);
+          await this.db.authorizationCase.update({
+            where: { id: caseId },
+            data:  { status: next },
+          });
+          await this.audit.emit({
+            tenantId,
+            entityType: "AuthorizationCase",
+            entityId:   caseId,
+            action:     DomainEvents.CASE_STATUS_CHANGED,
+            actorId:    input.uploadedBy,
+            before:     { status: current },
+            after:      { status: next },
+          });
+        } catch {
+          // Transition already disallowed by state machine — leave status as-is
+        }
+      }
+    }
+
     return attachment;
+  }
+
+  async getAttachment(tenantId: string, attachmentId: string) {
+    return this.db.attachment.findFirst({
+      where: { id: attachmentId, tenantId },
+    });
   }
 
   async listAttachments(tenantId: string, caseId: string) {

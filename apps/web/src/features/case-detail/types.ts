@@ -5,15 +5,25 @@ export interface CaseDetailViewModel {
   status: AuthorizationCaseStatus;
   priority: CasePriority;
   patientName: string;
+  patientDob?: string;
+  patientGender?: string;
+  patientMrn?: string;
   payerName: string;
   payerCaseRef?: string;
+  coveragePlanName?: string;
+  coverageMemberId?: string;
+  coverageGroupId?: string;
   serviceType: string;
   assignedTo?: string;
   dueAt?: string;
   isNearingBreach: boolean;
+  authNumber?: string;
+  denialReason?: string;
+  denialCode?: string;
   requirements: RequirementViewModel[];
   submissions: SubmissionViewModel[];
   attachments: AttachmentViewModel[];
+  tasks: TaskViewModel[];
   extractedEvents: ExtractedEventViewModel[];
   auditTimeline: AuditTimelineEntry[];
 }
@@ -38,6 +48,14 @@ export interface AttachmentViewModel {
   fileName: string;
   classification?: string;
   uploadedAt: string;
+}
+
+export interface TaskViewModel {
+  id: string;
+  type: string;
+  description: string;
+  assignedTo?: string;
+  dueAt?: string;
 }
 
 export interface ExtractedEventViewModel {

@@ -1,27 +1,67 @@
+import { CaseStatusBar }         from "@/components/molecules/CaseStatusBar";
+import { SubmitToPayerButton }    from "@/components/molecules/SubmitToPayerButton";
+import { PatientSnapshot }        from "@/components/organisms/PatientSnapshot";
+import { InsuranceSnapshot }      from "@/components/organisms/InsuranceSnapshot";
+import { RequirementsChecklist }  from "@/components/organisms/RequirementsChecklist";
+import { SubmissionsTimeline }    from "@/components/organisms/SubmissionsTimeline";
+import { DenialReasonPanel }      from "@/components/organisms/DenialReasonPanel";
+import { ApprovalPanel }          from "@/components/organisms/ApprovalPanel";
+import { CaseAttachmentsList }    from "@/components/organisms/CaseAttachmentsList";
+import { CaseTaskList }           from "@/components/organisms/CaseTaskList";
 import type { CaseDetailViewModel } from "../types";
 
 interface CaseDetailPageProps {
   caseDetail: CaseDetailViewModel;
 }
 
-// Presentation component — renders case detail panels from view model props only.
 export function CaseDetailPage({ caseDetail }: CaseDetailPageProps) {
   return (
-    <article>
-      <header className="mb-6">
-        <h1 className="text-xl font-semibold">{caseDetail.patientName}</h1>
-        <p className="text-sm text-gray-500">
-          {caseDetail.payerName} · {caseDetail.serviceType} · {caseDetail.status}
-        </p>
+    <article className="space-y-4 max-w-4xl">
+      <header className="flex items-start justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">{caseDetail.patientName}</h1>
+          <p className="text-sm text-gray-500 mt-0.5">Case #{caseDetail.id.slice(-6).toUpperCase()}</p>
+        </div>
+        <SubmitToPayerButton caseId={caseDetail.id} status={caseDetail.status} />
       </header>
-      {/* TODO: PatientSnapshot molecule */}
-      {/* TODO: InsuranceSnapshot molecule */}
-      {/* TODO: AuthTimeline organism */}
-      {/* TODO: RequirementsChecklist organism */}
-      {/* TODO: VoiceTranscriptPanel organism */}
-      {/* TODO: AttachmentsList organism */}
-      {/* TODO: DenialReasonPanel molecule */}
-      {/* TODO: AuditLog organism */}
+
+      <CaseStatusBar
+        status={caseDetail.status}
+        priority={caseDetail.priority}
+        serviceType={caseDetail.serviceType}
+        dueAt={caseDetail.dueAt}
+        isNearingBreach={caseDetail.isNearingBreach}
+        assignedTo={caseDetail.assignedTo}
+      />
+
+      <ApprovalPanel   status={caseDetail.status} authNumber={caseDetail.authNumber} />
+      <DenialReasonPanel status={caseDetail.status} denialCode={caseDetail.denialCode} denialReason={caseDetail.denialReason} />
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <PatientSnapshot
+          name={caseDetail.patientName}
+          dob={caseDetail.patientDob}
+          gender={caseDetail.patientGender}
+          mrn={caseDetail.patientMrn}
+        />
+        <InsuranceSnapshot
+          payerName={caseDetail.payerName}
+          planName={caseDetail.coveragePlanName}
+          memberId={caseDetail.coverageMemberId}
+          groupId={caseDetail.coverageGroupId}
+          payerCaseRef={caseDetail.payerCaseRef}
+          authNumber={caseDetail.authNumber}
+        />
+      </div>
+
+      <RequirementsChecklist
+        requirements={caseDetail.requirements}
+        caseId={caseDetail.id}
+        caseStatus={caseDetail.status}
+      />
+      <CaseTaskList           tasks={caseDetail.tasks} caseId={caseDetail.id} caseStatus={caseDetail.status} />
+      <SubmissionsTimeline    submissions={caseDetail.submissions} />
+      <CaseAttachmentsList    attachments={caseDetail.attachments} />
     </article>
   );
 }

@@ -5,15 +5,18 @@ const API_BASE = process.env["API_URL"] ?? "http://localhost:3001";
 
 export async function apiFetch<T>(
   path: string,
-  options?: RequestInit & { tenantId: string }
+  options?: RequestInit & { tenantId: string; accessToken?: string }
 ): Promise<T> {
-  const { tenantId, ...fetchOptions } = options ?? { tenantId: "" };
+  const { tenantId, accessToken, ...fetchOptions } = options ?? { tenantId: "" };
+
+  const authHeader = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...fetchOptions,
     headers: {
       "Content-Type": "application/json",
       "x-tenant-id": tenantId,
+      ...authHeader,
       ...fetchOptions.headers,
     },
     cache: "no-store", // dashboard data is always fresh

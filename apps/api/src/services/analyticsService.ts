@@ -203,4 +203,37 @@ export class AnalyticsService {
       data: staffSummaries,
     };
   }
+
+  async kpiSummary(tenantId: string) {
+    const SLA_HOURS: Record<string, number> = { urgent: 24, expedited: 72, standard: 336 };
+
+    const [counts, activeCases] = await Promise.all([
+      this.db.authorizationCase.groupBy({
+        by: ["status"],
+        where: { tenantId },
+        _count: { id: true },
+      }),
+      this.db.authorizationCase.findMany({
+        where: {
+          tenantId,
+          status: { notIn: ["approved", "denied", "closed"] },
+          dueAt: { not: null },
+        },
+        select: { priority: true, dueAt: true },
+      }),
+    ]);
+
+    const total = counts.reduce((s, r) => s + r._count.id, 0);
+    const approved = counts.find((r) => r.status === "approved")?._count.id ?? 0;
+    const denied   = counts.find((r) => r.status === "denied")?._count.id   ?? 0;
+
+    const nearingBreach = activeCases.filter((c) => {
+      if (!c.dueAt) return false;
+      const slaHours  = SLA_HOURS[c.priority] ?? 336;
+      const hoursLeft = (c.dueAt.getTime() - Date.now()) / (1000 * 60 * 60);
+      return hoursLeft > 0 && hoursLeft <= slaHours * 0.25;
+    }).length;
+
+    return { total, approved, denied, nearingBreach };
+  }
 }

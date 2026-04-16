@@ -1,5 +1,7 @@
-import type { CaseDetailViewModel } from "../types";
+import { requireSession } from "@/lib/session";
+import { apiFetch } from "@/lib/api/client";
 import { CaseDetailPage } from "../presentation/CaseDetailPage";
+import { toCaseDetailViewModel, type CaseDetailApiResponse } from "../mappers";
 
 interface CaseDetailContainerProps {
   caseId: string;
@@ -7,12 +9,25 @@ interface CaseDetailContainerProps {
 
 // Server Component — fetches all case detail data and passes view model to presentation.
 export async function CaseDetailContainer({ caseId }: CaseDetailContainerProps) {
-  // TODO: fetch case, requirements, submissions, attachments, events, audit trail
-  // TODO: map to CaseDetailViewModel
-  const caseDetail: CaseDetailViewModel | null = null;
+  const session = await requireSession();
+
+  let caseDetail = null;
+  try {
+    const raw = await apiFetch<CaseDetailApiResponse>(`/api/cases/${caseId}`, {
+      tenantId: session.tenantId,
+      accessToken: session.accessToken,
+    });
+    caseDetail = toCaseDetailViewModel(raw);
+  } catch {
+    // 404 or network failure
+  }
 
   if (!caseDetail) {
-    return <p className="text-gray-500">Case not found.</p>;
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-10 text-center text-sm text-gray-400">
+        Case not found.
+      </div>
+    );
   }
 
   return <CaseDetailPage caseDetail={caseDetail} />;

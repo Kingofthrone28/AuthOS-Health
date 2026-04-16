@@ -1,5 +1,6 @@
 import { FileText, Tag } from "lucide-react";
 import type { AttachmentViewModel } from "@/features/documents/types";
+import { DownloadButton } from "@/features/documents/presentation/DownloadButton";
 
 interface AttachmentsTableProps {
   documents: AttachmentViewModel[];
@@ -48,6 +49,7 @@ export function AttachmentsTable({ documents }: AttachmentsTableProps) {
               <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Size</th>
               <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Uploaded</th>
               <th className="px-4 py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">By</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-50">
@@ -71,6 +73,13 @@ export function AttachmentsTable({ documents }: AttachmentsTableProps) {
                 <td className="px-4 py-3 text-gray-500 text-xs">{formatBytes(doc.sizeBytes)}</td>
                 <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{doc.uploadedAt}</td>
                 <td className="px-4 py-3 text-gray-500 text-xs">{doc.uploadedBy}</td>
+                <td className="px-4 py-3 text-right">
+                  <DownloadButton
+                    attachmentId={doc.id}
+                    fileName={doc.fileName}
+                    tenantId={doc.tenantId}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
