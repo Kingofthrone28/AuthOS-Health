@@ -6,7 +6,8 @@ import type { ExtractedEventType } from "@authos/shared-types";
 export interface TranscriptWebhookPayload {
   callSid: string;
   tenantId: string;
-  caseId: string;
+  caseId?: string | null;
+  direction?: "inbound" | "outbound";
   transcriptText: string;
   durationSeconds?: number;
   provider: string; // e.g. "deepgram", "assemblyai"

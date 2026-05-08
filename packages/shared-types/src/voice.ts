@@ -2,10 +2,11 @@
 
 export interface CallTranscript {
   id: string;
-  caseId: string;
+  caseId?: string | null;
   tenantId: string;
   callSid: string;
   direction: "outbound" | "inbound";
+  status: "IN_PROGRESS" | "COMPLETED";
   startedAt: Date;
   endedAt?: Date;
   durationSeconds?: number;

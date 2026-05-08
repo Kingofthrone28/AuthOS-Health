@@ -28,7 +28,8 @@ export interface AuthorizationCase {
   priority: CasePriority;
   status: AuthorizationCaseStatus;
   payerName: string;
-  payerCaseRef?: string; // payer-assigned reference number
+  payerCaseRef?: string;   // payer-assigned reference number
+  approvalNumber?: string; // voice-extracted payer approval number
   dueAt?: Date;
   createdBy: string; // userId
   assignedTo?: string; // userId

@@ -24,6 +24,7 @@ export const DomainEvents = {
   EVENT_EXTRACTED: "voice.event.extracted",
   EVENT_APPROVED: "voice.event.approved",
   EVENT_REJECTED: "voice.event.rejected",
+  EVENT_APPLIED_TO_CASE: "voice.event.applied_to_case",
 
   // Documents
   ATTACHMENT_UPLOADED: "attachment.uploaded",

@@ -26,9 +26,18 @@ export function TranscriptFeed({ transcripts }: Props) {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs font-mono text-gray-500">{t.callSid}</span>
                   <span className="text-xs text-gray-400">·</span>
-                  <span className="text-xs text-gray-500">Case {t.caseId.slice(0, 8)}</span>
+                  <span className="text-xs text-gray-500">
+                    {t.caseId ? `Case ${t.caseId.slice(0, 8)}` : "Unlinked"}
+                  </span>
+                  {t.status === "IN_PROGRESS" && (
+                    <span className="rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                      Active
+                    </span>
+                  )}
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">{t.startedAt} · {t.duration}</p>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {t.direction} · {t.startedAt} · {t.status === "IN_PROGRESS" ? "in progress" : t.duration}
+                </p>
               </div>
 
               <div className="text-right shrink-0">

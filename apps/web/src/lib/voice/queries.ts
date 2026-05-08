@@ -8,9 +8,10 @@ export interface VoiceStats {
 
 export interface TranscriptListItem {
   id:              string;
-  caseId:          string;
+  caseId:          string | null;
   callSid:         string;
   direction:       string;
+  status:          "IN_PROGRESS" | "COMPLETED";
   startedAt:       string;
   endedAt:         string | null;
   durationSeconds: number | null;

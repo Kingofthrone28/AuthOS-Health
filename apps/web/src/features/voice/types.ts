@@ -1,7 +1,9 @@
 export interface TranscriptRowViewModel {
   id:                 string;
-  caseId:             string;
+  caseId:             string | null;
   callSid:            string;
+  direction:          string;
+  status:             "IN_PROGRESS" | "COMPLETED";
   startedAt:          string; // formatted e.g. "Apr 10, 2:34 PM"
   duration:           string; // formatted e.g. "3m 12s" or "—"
   eventCount:         number;

@@ -3,23 +3,39 @@ import type { TranscriptWebhookPayload, RawExtractedEvent } from "@authos/voice-
 import { requiresHumanReview, AUTO_APPLY_EVENT_TYPES, DomainEvents } from "@authos/domain";
 import type { AuditService } from "./auditService.js";
 
+export interface StartCallTranscriptInput {
+  caseId: string;
+  callSid: string;
+  direction: "inbound" | "outbound";
+  startedAt?: Date | undefined;
+  actorId?: string | undefined;
+}
+
 export class VoiceService {
   constructor(
     private readonly db: PrismaClient,
     private readonly audit: AuditService
   ) {}
 
-  async persistTranscript(tenantId: string, payload: TranscriptWebhookPayload) {
-    const transcript = await this.db.callTranscript.create({
-      data: {
+  async startCallTranscript(tenantId: string, input: StartCallTranscriptInput) {
+    const startedAt = input.startedAt ?? new Date();
+
+    const transcript = await this.db.callTranscript.upsert({
+      where: { callSid: input.callSid },
+      create: {
         tenantId,
-        caseId:          payload.caseId,
-        callSid:         payload.callSid,
-        direction:       "inbound",
-        transcriptText:  payload.transcriptText,
-        durationSeconds: payload.durationSeconds ?? null,
-        startedAt:       new Date(payload.completedAt),
-        endedAt:         new Date(payload.completedAt),
+        caseId:    input.caseId,
+        callSid:   input.callSid,
+        direction: input.direction,
+        status:    "IN_PROGRESS",
+        startedAt,
+      },
+      update: {
+        tenantId,
+        caseId:    input.caseId,
+        direction: input.direction,
+        status:    "IN_PROGRESS",
+        startedAt,
       },
     });
 
@@ -27,8 +43,48 @@ export class VoiceService {
       tenantId,
       entityType: "CallTranscript",
       entityId:   transcript.id,
+      action:     DomainEvents.CALL_STARTED,
+      ...(input.actorId ? { actorId: input.actorId } : {}),
+      after:      { callSid: input.callSid, caseId: input.caseId, direction: input.direction },
+    });
+
+    return transcript;
+  }
+
+  async persistTranscript(tenantId: string, payload: TranscriptWebhookPayload) {
+    const completedAt = new Date(payload.completedAt);
+    const createData = {
+      tenantId,
+      caseId:          payload.caseId ?? null,
+      callSid:         payload.callSid,
+      direction:       payload.direction ?? "inbound",
+      status:          "COMPLETED" as const,
+      transcriptText:  payload.transcriptText,
+      durationSeconds: payload.durationSeconds ?? null,
+      startedAt:       completedAt,
+      endedAt:         completedAt,
+    };
+    const updateData = {
+      ...(payload.caseId !== undefined ? { caseId: payload.caseId } : {}),
+      ...(payload.direction ? { direction: payload.direction } : {}),
+      status:          "COMPLETED" as const,
+      transcriptText:  payload.transcriptText,
+      durationSeconds: payload.durationSeconds ?? null,
+      endedAt:         completedAt,
+    };
+
+    const transcript = await this.db.callTranscript.upsert({
+      where:  { callSid: payload.callSid },
+      create: createData,
+      update: updateData,
+    });
+
+    await this.audit.emit({
+      tenantId,
+      entityType: "CallTranscript",
+      entityId:   transcript.id,
       action:     DomainEvents.TRANSCRIPT_RECEIVED,
-      after:      { callSid: payload.callSid, caseId: payload.caseId },
+      after:      { callSid: payload.callSid, caseId: transcript.caseId, status: transcript.status },
     });
 
     return transcript;
@@ -103,6 +159,17 @@ export class VoiceService {
     });
   }
 
+  async getActiveTranscriptForCase(tenantId: string, caseId: string) {
+    return this.db.callTranscript.findFirst({
+      where: {
+        tenantId,
+        caseId,
+        status: "IN_PROGRESS",
+      },
+      orderBy: { startedAt: "desc" },
+    });
+  }
+
   async listPendingEvents(tenantId: string, limit = 50) {
     return this.db.extractedEvent.findMany({
       where:   { tenantId, reviewStatus: "pending" },
@@ -133,5 +200,59 @@ export class VoiceService {
       actorId: reviewedBy,
       after:   { decision },
     });
+
+    if (decision !== "approved") return;
+
+    const event = await this.db.extractedEvent.findUniqueOrThrow({
+      where: { id: eventId },
+    });
+
+    if (!AUTO_APPLY_EVENT_TYPES.has(event.eventType as never)) return;
+
+    if (event.eventType === "reference_number") {
+      await this.db.authorizationCase.update({
+        where: { id: event.caseId },
+        data:  { payerCaseRef: event.value },
+      });
+      await this.audit.emit({
+        tenantId,
+        entityType: "AuthorizationCase",
+        entityId:   event.caseId,
+        action:     DomainEvents.EVENT_APPLIED_TO_CASE,
+        actorId:    reviewedBy,
+        after:      { payerCaseRef: event.value, sourceEventId: eventId },
+      });
+    } else if (event.eventType === "approval_number") {
+      await this.db.authorizationCase.update({
+        where: { id: event.caseId },
+        data:  { approvalNumber: event.value },
+      });
+      await this.audit.emit({
+        tenantId,
+        entityType: "AuthorizationCase",
+        entityId:   event.caseId,
+        action:     DomainEvents.EVENT_APPLIED_TO_CASE,
+        actorId:    reviewedBy,
+        after:      { approvalNumber: event.value, sourceEventId: eventId },
+      });
+    } else if (event.eventType === "callback_deadline") {
+      const task = await this.db.task.create({
+        data: {
+          tenantId,
+          caseId:      event.caseId,
+          type:        "callback_deadline",
+          description: `Callback deadline from voice extraction: "${event.value}"`,
+          status:      "open",
+        },
+      });
+      await this.audit.emit({
+        tenantId,
+        entityType: "Task",
+        entityId:   task.id,
+        action:     DomainEvents.EVENT_APPLIED_TO_CASE,
+        actorId:    reviewedBy,
+        after:      { taskType: "callback_deadline", value: event.value, sourceEventId: eventId },
+      });
+    }
   }
 }

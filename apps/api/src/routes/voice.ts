@@ -6,7 +6,8 @@ export const voiceRouter = Router();
 
 const TranscriptBodySchema = z.object({
   callSid:         z.string(),
-  caseId:          z.string(),
+  caseId:          z.string().nullable().optional(),
+  direction:       z.enum(["inbound", "outbound"]).optional(),
   transcriptText:  z.string(),
   durationSeconds: z.number().optional(),
   provider:        z.string(),
@@ -82,9 +83,18 @@ voiceRouter.post("/webhooks/transcript", async (req, res, next) => {
     }
 
     const { tenantId } = res.locals as { tenantId: string };
-    const transcript = await ctx.voiceService.persistTranscript(tenantId, {
-      ...parsed.data,
+    const payload = {
+      callSid:         parsed.data.callSid,
       tenantId,
+      ...(parsed.data.caseId !== undefined ? { caseId: parsed.data.caseId } : {}),
+      ...(parsed.data.direction ? { direction: parsed.data.direction } : {}),
+      transcriptText:  parsed.data.transcriptText,
+      ...(parsed.data.durationSeconds !== undefined ? { durationSeconds: parsed.data.durationSeconds } : {}),
+      provider:        parsed.data.provider,
+      completedAt:     parsed.data.completedAt,
+    };
+    const transcript = await ctx.voiceService.persistTranscript(tenantId, {
+      ...payload,
     });
 
     res.json({ transcriptId: transcript.id });

@@ -9,6 +9,8 @@ import { ApprovalPanel }          from "@/components/organisms/ApprovalPanel";
 import { CaseAttachmentsList }    from "@/components/organisms/CaseAttachmentsList";
 import { CaseTaskList }           from "@/components/organisms/CaseTaskList";
 import type { CaseDetailViewModel } from "../types";
+import { ActiveCallBanner } from "./ActiveCallBanner";
+import { CallPayerButton } from "./CallPayerButton";
 
 interface CaseDetailPageProps {
   caseDetail: CaseDetailViewModel;
@@ -22,8 +24,13 @@ export function CaseDetailPage({ caseDetail }: CaseDetailPageProps) {
           <h1 className="text-xl font-semibold text-gray-900">{caseDetail.patientName}</h1>
           <p className="text-sm text-gray-500 mt-0.5">Case #{caseDetail.id.slice(-6).toUpperCase()}</p>
         </div>
-        <SubmitToPayerButton caseId={caseDetail.id} status={caseDetail.status} />
+        <div className="flex items-center gap-2">
+          <CallPayerButton caseId={caseDetail.id} />
+          <SubmitToPayerButton caseId={caseDetail.id} status={caseDetail.status} />
+        </div>
       </header>
+
+      <ActiveCallBanner caseId={caseDetail.id} />
 
       <CaseStatusBar
         status={caseDetail.status}

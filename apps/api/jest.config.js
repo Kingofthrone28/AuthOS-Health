@@ -1,3 +1,9 @@
+import { config } from "dotenv";
+import { resolve } from "path";
+
+// Load .env so Prisma Client has DATABASE_URL without requiring shell export
+config({ path: resolve(process.cwd(), ".env") });
+
 /** @type {import('jest').Config} */
 export default {
   preset: "ts-jest/presets/default-esm",

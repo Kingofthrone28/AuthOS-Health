@@ -70,6 +70,11 @@ enum ReviewStatus {
   rejected
 }
 
+enum CallTranscriptStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
 enum RequirementSource {
   crd
   dtr
@@ -190,6 +195,7 @@ model AuthorizationCase {
   status          CaseStatus   @default(new)
   payerName       String
   payerCaseRef    String?
+  approvalNumber  String?
   dueAt           DateTime?
   createdBy       String
   assignedTo      String?
@@ -290,20 +296,22 @@ model Task {
 
 model CallTranscript {
   id              String            @id @default(cuid())
-  caseId          String
+  caseId          String?
   tenantId        String
   callSid         String            @unique
   direction       String
+  status          CallTranscriptStatus @default(COMPLETED)
   startedAt       DateTime
   endedAt         DateTime?
   durationSeconds Int?
   transcriptText  String?
   transcriptRef   String?
 
-  case            AuthorizationCase  @relation(fields: [caseId], references: [id])
+  case            AuthorizationCase? @relation(fields: [caseId], references: [id], onDelete: SetNull)
   extractedEvents ExtractedEvent[]
 
   @@index([caseId])
+  @@index([tenantId, status])
 }
 
 model ExtractedEvent {

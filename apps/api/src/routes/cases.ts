@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import twilio from "twilio";
 import { ctx } from "../lib/context.js";
 import { ApiError } from "../middleware/errorHandler.js";
 
@@ -13,6 +14,10 @@ const CreateCaseSchema = z.object({
   priority:      z.enum(["standard", "expedited", "urgent"]),
   payerName:     z.string(),
   orderRefId:    z.string().optional(),
+});
+
+const StartCallSchema = z.object({
+  toNumber: z.string().trim().min(1).optional(),
 });
 
 // POST /api/cases
@@ -71,6 +76,70 @@ casesRouter.patch("/:id", async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
+// POST /api/cases/:id/calls/start
+// Starts an outbound payer follow-up call and creates an IN_PROGRESS transcript shell.
+casesRouter.post("/:id/calls/start", async (req, res, next) => {
+  try {
+    const tenantId = res.locals["tenantId"] as string;
+    const actorId = res.locals["userId"] as string | undefined;
+    const caseId = req.params["id"]!;
+    const parsed = StartCallSchema.safeParse(req.body ?? {});
+    if (!parsed.success) throw new ApiError(400, parsed.error.message);
+
+    const authCase = await ctx.caseService.getCase(tenantId, caseId);
+    if (!authCase) throw new ApiError(404, "Case not found");
+
+    const accountSid = process.env["TWILIO_ACCOUNT_SID"];
+    const authToken = process.env["TWILIO_AUTH_TOKEN"];
+    const fromNumber = process.env["TWILIO_FROM_NUMBER"];
+    const toNumber =
+      parsed.data.toNumber ??
+      process.env["TWILIO_DEFAULT_PAYER_PHONE"];
+    const twimlUrl = buildTwimlUrl(tenantId, caseId);
+
+    if (!accountSid || !authToken || !fromNumber) {
+      throw new ApiError(500, "Twilio outbound calling is not configured");
+    }
+    if (!toNumber) {
+      throw new ApiError(400, "toNumber is required");
+    }
+
+    const call = await twilio(accountSid, authToken).calls.create({
+      to:   toNumber,
+      from: fromNumber,
+      url:  twimlUrl,
+    });
+
+    const transcript = await ctx.voiceService.startCallTranscript(tenantId, {
+      caseId,
+      callSid: call.sid,
+      direction: "outbound",
+      ...(actorId ? { actorId } : {}),
+    });
+
+    res.status(201).json({
+      callSid:      call.sid,
+      transcriptId: transcript.id,
+      status:       transcript.status,
+    });
+  } catch (err) { next(err); }
+});
+
+// GET /api/cases/:id/calls/active
+// Used by the case detail UI to surface an in-progress payer call.
+casesRouter.get("/:id/calls/active", async (req, res, next) => {
+  try {
+    const tenantId = res.locals["tenantId"] as string;
+    const caseId = req.params["id"]!;
+
+    const authCase = await ctx.caseService.getCase(tenantId, caseId);
+    if (!authCase) throw new ApiError(404, "Case not found");
+
+    const transcript = await ctx.voiceService.getActiveTranscriptForCase(tenantId, caseId);
+    res.json({ activeCall: transcript });
+  } catch (err) { next(err); }
+});
+
 // POST /api/cases/:id/assign
 casesRouter.post("/:id/assign", async (req, res, next) => {
   try {
@@ -105,3 +174,21 @@ casesRouter.post("/:id/escalate", async (req, res, next) => {
     res.json({ id: req.params["id"], escalated: true });
   } catch (err) { next(err); }
 });
+
+function buildTwimlUrl(tenantId: string, caseId: string): string {
+  const configuredUrl =
+    process.env["TWILIO_TWIML_URL"] ??
+    (process.env["WORKER_PUBLIC_URL"]
+      ? `${process.env["WORKER_PUBLIC_URL"].replace(/\/$/, "")}/voice/twiml`
+      : undefined);
+
+  if (!configuredUrl) {
+    throw new ApiError(500, "TWILIO_TWIML_URL or WORKER_PUBLIC_URL is required");
+  }
+
+  const url = new URL(configuredUrl);
+  url.searchParams.set("tenantId", tenantId);
+  url.searchParams.set("caseId", caseId);
+  url.searchParams.set("direction", "outbound");
+  return url.toString();
+}

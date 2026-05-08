@@ -31,45 +31,56 @@ async function main() {
   const db = new PrismaClient();
 
   try {
-    const existing = await db.tenant.findUnique({ where: { slug: tenantSlug } });
+    const passwordHash = adminPassword
+      ? await bcrypt.hash(adminPassword, 12)
+      : undefined;
 
-    if (existing) {
-      console.log(`Tenant '${tenantSlug}' already exists (id=${existing.id}), skipping creation.`);
-    } else {
-      const passwordHash = adminPassword
-        ? await bcrypt.hash(adminPassword, 12)
-        : undefined;
+    const tenant = await db.tenant.upsert({
+      where:  { slug: tenantSlug },
+      update: { name: tenantName },
+      create: { name: tenantName, slug: tenantSlug },
+    });
 
-      const tenant = await db.tenant.create({
-        data: { name: tenantName, slug: tenantSlug },
-      });
+    await db.user.upsert({
+      where: { tenantId_email: { tenantId: tenant.id, email: adminEmail } },
+      update: {
+        name: adminName,
+        role: "admin",
+        ...(passwordHash ? { passwordHash } : {}),
+      },
+      create: {
+        tenantId: tenant.id,
+        email: adminEmail,
+        name: adminName,
+        role: "admin",
+        passwordHash: passwordHash ?? null,
+      },
+    });
 
-      await db.user.create({
-        data: {
-          tenantId: tenant.id,
-          email: adminEmail,
-          name: adminName,
-          role: "admin",
-          passwordHash: passwordHash ?? null,
-        },
-      });
+    const ssoProvider = process.env["SSO_PROVIDER"] as "oidc" | "saml" | undefined;
 
-      const ssoProvider = process.env["SSO_PROVIDER"] as "oidc" | "saml" | undefined;
+    await db.tenantSettings.upsert({
+      where: { tenantId: tenant.id },
+      update: {
+        ssoProvider: ssoProvider ?? null,
+        ssoIssuerUrl: process.env["SSO_ISSUER_URL"] ?? null,
+        ssoClientId: process.env["SSO_CLIENT_ID"] ?? null,
+        ssoClientSecret: process.env["SSO_CLIENT_SECRET"] ?? null,
+        fhirServerUrl: process.env["FHIR_SERVER_URL"] ?? null,
+        payerEndpoint: process.env["PAYER_URL"] ?? null,
+      },
+      create: {
+        tenantId: tenant.id,
+        ssoProvider: ssoProvider ?? null,
+        ssoIssuerUrl: process.env["SSO_ISSUER_URL"] ?? null,
+        ssoClientId: process.env["SSO_CLIENT_ID"] ?? null,
+        ssoClientSecret: process.env["SSO_CLIENT_SECRET"] ?? null,
+        fhirServerUrl: process.env["FHIR_SERVER_URL"] ?? null,
+        payerEndpoint: process.env["PAYER_URL"] ?? null,
+      },
+    });
 
-      await db.tenantSettings.create({
-        data: {
-          tenantId: tenant.id,
-          ssoProvider: ssoProvider ?? null,
-          ssoIssuerUrl: process.env["SSO_ISSUER_URL"] ?? null,
-          ssoClientId: process.env["SSO_CLIENT_ID"] ?? null,
-          ssoClientSecret: process.env["SSO_CLIENT_SECRET"] ?? null,
-          fhirServerUrl: process.env["FHIR_SERVER_URL"] ?? null,
-          payerEndpoint: process.env["PAYER_URL"] ?? null,
-        },
-      });
-
-      console.log(`Tenant '${tenantSlug}' created (id=${tenant.id}) with admin user '${adminEmail}'.`);
-    }
+    console.log(`Tenant '${tenantSlug}' ensured (id=${tenant.id}); admin user '${adminEmail}' synced.`);
   } finally {
     await db.$disconnect();
   }

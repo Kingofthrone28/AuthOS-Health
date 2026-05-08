@@ -22,6 +22,19 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
+    try {
+      const readyRes = await fetch(`${API_URL}/ready`, { credentials: "omit" });
+      if (!readyRes.ok) {
+        setError("Auth service is up, but the database is unavailable. Start Postgres and try again.");
+        setLoading(false);
+        return;
+      }
+    } catch {
+      setError("Unable to reach the auth service. Make sure the API is running and try again.");
+      setLoading(false);
+      return;
+    }
+
     const result = await signIn("credentials", {
       email,
       password,

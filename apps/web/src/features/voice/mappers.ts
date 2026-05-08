@@ -20,6 +20,8 @@ export function mapTranscriptToViewModel(t: TranscriptListItem): TranscriptRowVi
     id:                 t.id,
     caseId:             t.caseId,
     callSid:            t.callSid,
+    direction:          t.direction,
+    status:             t.status,
     startedAt:          formatDate(t.startedAt),
     duration:           formatDuration(t.durationSeconds),
     eventCount:         t.extractedEvents.length,

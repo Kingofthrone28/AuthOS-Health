@@ -30,8 +30,7 @@ export async function DashboardPageContainer({ filters }: DashboardPageContainer
   let kpi: DashboardKpi = { total: 0, nearingBreach: 0, approved: 0, denied: 0 };
   try {
     const raw = await apiFetch<ApiKpi>("/api/analytics/kpi", {
-      tenantId:    session.tenantId,
-      accessToken: session.accessToken,
+      tenantId: session.tenantId,
     });
     kpi = raw;
   } catch {
