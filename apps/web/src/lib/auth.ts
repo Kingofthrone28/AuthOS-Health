@@ -51,22 +51,24 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as Record<string, unknown>).role as string;
-        token.tenantId = (user as Record<string, unknown>).tenantId as string;
-        token.tenantSlug = (user as Record<string, unknown>).tenantSlug as string;
-        token.tenantName = (user as Record<string, unknown>).tenantName as string;
-        token.accessToken = (user as Record<string, unknown>).accessToken as string;
+        const u = user as unknown as Record<string, unknown>;
+        token.role = u["role"] as string;
+        token.tenantId = u["tenantId"] as string;
+        token.tenantSlug = u["tenantSlug"] as string;
+        token.tenantName = u["tenantName"] as string;
+        token.accessToken = u["accessToken"] as string;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        (session as Record<string, unknown>).tenantId = token.tenantId;
-        (session as Record<string, unknown>).tenantSlug = token.tenantSlug;
-        (session as Record<string, unknown>).tenantName = token.tenantName;
-        (session as Record<string, unknown>).accessToken = token.accessToken;
-        (session.user as Record<string, unknown>).role = token.role;
-        (session.user as Record<string, unknown>).id = token.sub;
+        const s = session as unknown as Record<string, unknown>;
+        s["tenantId"] = token.tenantId;
+        s["tenantSlug"] = token.tenantSlug;
+        s["tenantName"] = token.tenantName;
+        s["accessToken"] = token.accessToken;
+        (session.user as unknown as Record<string, unknown>)["role"] = token.role;
+        (session.user as unknown as Record<string, unknown>)["id"] = token.sub;
       }
       return session;
     },
