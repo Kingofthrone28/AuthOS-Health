@@ -4,7 +4,7 @@ import CredentialsProvider from "next-auth/providers/credentials";
 const API_URL = process.env["API_URL"] ?? "http://localhost:3001";
 
 export const authOptions: NextAuthOptions = {
-  secret: process.env["NEXTAUTH_SECRET"],
+  ...(process.env["NEXTAUTH_SECRET"] !== undefined && { secret: process.env["NEXTAUTH_SECRET"] }),
   providers: [
     CredentialsProvider({
       name: "Credentials",

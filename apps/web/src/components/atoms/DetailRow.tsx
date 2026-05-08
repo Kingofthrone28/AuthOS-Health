@@ -1,7 +1,7 @@
 interface DetailRowProps {
   label: string;
-  value?: string;
-  highlight?: boolean;
+  value?: string | undefined;
+  highlight?: boolean | undefined;
 }
 
 export function DetailRow({ label, value, highlight }: DetailRowProps) {

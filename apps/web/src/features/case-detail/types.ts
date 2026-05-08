@@ -5,21 +5,21 @@ export interface CaseDetailViewModel {
   status: AuthorizationCaseStatus;
   priority: CasePriority;
   patientName: string;
-  patientDob?: string;
-  patientGender?: string;
-  patientMrn?: string;
+  patientDob?: string | undefined;
+  patientGender?: string | undefined;
+  patientMrn?: string | undefined;
   payerName: string;
-  payerCaseRef?: string;
-  coveragePlanName?: string;
-  coverageMemberId?: string;
-  coverageGroupId?: string;
+  payerCaseRef?: string | undefined;
+  coveragePlanName?: string | undefined;
+  coverageMemberId?: string | undefined;
+  coverageGroupId?: string | undefined;
   serviceType: string;
-  assignedTo?: string;
-  dueAt?: string;
+  assignedTo?: string | undefined;
+  dueAt?: string | undefined;
   isNearingBreach: boolean;
-  authNumber?: string;
-  denialReason?: string;
-  denialCode?: string;
+  authNumber?: string | undefined;
+  denialReason?: string | undefined;
+  denialCode?: string | undefined;
   requirements: RequirementViewModel[];
   submissions: SubmissionViewModel[];
   attachments: AttachmentViewModel[];
@@ -39,14 +39,14 @@ export interface SubmissionViewModel {
   id: string;
   protocol: string;
   submittedAt: string;
-  decision?: string;
-  denialReason?: string;
+  decision?: string | undefined;
+  denialReason?: string | undefined;
 }
 
 export interface AttachmentViewModel {
   id: string;
   fileName: string;
-  classification?: string;
+  classification?: string | undefined;
   uploadedAt: string;
 }
 
@@ -54,8 +54,8 @@ export interface TaskViewModel {
   id: string;
   type: string;
   description: string;
-  assignedTo?: string;
-  dueAt?: string;
+  assignedTo?: string | undefined;
+  dueAt?: string | undefined;
 }
 
 export interface ExtractedEventViewModel {
@@ -69,6 +69,6 @@ export interface ExtractedEventViewModel {
 export interface AuditTimelineEntry {
   id: string;
   action: string;
-  actorId?: string;
+  actorId?: string | undefined;
   occurredAt: string;
 }
