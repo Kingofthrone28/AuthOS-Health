@@ -265,7 +265,7 @@ async function main() {
   console.log(`  AuditEvents:   ${counts[5]}`);
   console.log(`\nCase IDs for testing:`);
   for (let i = 0; i < cases.length; i++) {
-    console.log(`  ${cases[i].id}  —  ${caseData[i].service} [${caseData[i].status}]`);
+    console.log(`  ${cases[i]!.id}  —  ${caseData[i]!.service} [${caseData[i]!.status}]`);
   }
 }
 

@@ -1,5 +1,6 @@
 import type { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import type ms from "ms";
 import jwksClient from "jwks-rsa";
 
 export interface TokenClaims {
@@ -97,6 +98,6 @@ export function tenantAuth(req: Request, res: Response, next: NextFunction): voi
     });
 }
 
-export function signJwt(claims: TokenClaims, expiresIn = "8h"): string {
+export function signJwt(claims: TokenClaims, expiresIn: ms.StringValue = "8h"): string {
   return jwt.sign(claims, JWT_SECRET, { expiresIn });
 }

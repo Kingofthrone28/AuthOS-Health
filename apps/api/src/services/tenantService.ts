@@ -1,4 +1,4 @@
-import { type PrismaClient } from "@prisma/client";
+import { type PrismaClient, type Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import type { AuditEmitter } from "@authos/audit";
 
@@ -8,7 +8,7 @@ export class TenantService {
     private readonly audit: AuditEmitter,
   ) {}
 
-  async create(data: { name: string; slug: string; adminEmail: string; adminName: string; adminPassword?: string }) {
+  async create(data: { name: string; slug: string; adminEmail: string; adminName: string; adminPassword?: string | undefined }) {
     const tenant = await this.db.tenant.create({
       data: { name: data.name, slug: data.slug },
     });
@@ -53,22 +53,28 @@ export class TenantService {
   async updateSettings(
     tenantId: string,
     data: {
-      ssoProvider?: "oidc" | "saml" | null;
-      ssoIssuerUrl?: string | null;
-      ssoClientId?: string | null;
-      ssoClientSecret?: string | null;
-      fhirServerUrl?: string | null;
-      payerEndpoint?: string | null;
-      retentionDays?: number;
+      ssoProvider?: "oidc" | "saml" | null | undefined;
+      ssoIssuerUrl?: string | null | undefined;
+      ssoClientId?: string | null | undefined;
+      ssoClientSecret?: string | null | undefined;
+      fhirServerUrl?: string | null | undefined;
+      payerEndpoint?: string | null | undefined;
+      retentionDays?: number | undefined;
     },
     actorId: string,
   ) {
     const before = await this.db.tenantSettings.findUnique({ where: { tenantId } });
 
+    // Filter undefined values — Prisma nullable fields expect `T | null`,
+    // not `T | null | undefined`. Cast is safe: values come from Zod validation.
+    const prismaData = Object.fromEntries(
+      Object.entries(data).filter(([, v]) => v !== undefined)
+    ) as Prisma.TenantSettingsUpdateInput;
+
     const settings = await this.db.tenantSettings.upsert({
       where: { tenantId },
-      create: { tenantId, ...data },
-      update: data,
+      create: { tenantId, ...prismaData } as Prisma.TenantSettingsUncheckedCreateInput,
+      update: prismaData,
     });
 
     await this.audit.emit({
@@ -94,7 +100,7 @@ export class TenantService {
 
   async createUser(
     tenantId: string,
-    data: { email: string; name: string; role?: string; password?: string },
+    data: { email: string; name: string; role?: string | undefined; password?: string | undefined },
     actorId: string,
   ) {
     const passwordHash = data.password

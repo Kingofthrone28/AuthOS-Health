@@ -11,7 +11,7 @@ export function createSamlClient(config: SamlConfig): SAML {
   return new SAML({
     entryPoint: config.entryPoint,
     issuer: config.issuer,
-    cert: config.cert,
+    idpCert: config.cert,
     callbackUrl: config.callbackUrl,
     wantAuthnResponseSigned: true,
     wantAssertionsSigned: true,
@@ -20,9 +20,9 @@ export function createSamlClient(config: SamlConfig): SAML {
 
 export interface SamlProfile {
   nameID: string;
-  email?: string;
-  firstName?: string;
-  lastName?: string;
+  email?: string | undefined;
+  firstName?: string | undefined;
+  lastName?: string | undefined;
   [key: string]: unknown;
 }
 
@@ -45,5 +45,5 @@ export function generateSpMetadata(samlClient: SAML): string {
 }
 
 export function getLoginUrl(samlClient: SAML, relayState?: string): Promise<string> {
-  return samlClient.getAuthorizeUrlAsync(relayState ?? "", {}, "authorize");
+  return samlClient.getAuthorizeUrlAsync(relayState ?? "", undefined, {});
 }

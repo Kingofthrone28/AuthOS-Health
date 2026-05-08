@@ -41,7 +41,15 @@ export class EhrService {
     const fhirOrder    = ((orderRes as FhirBundle<FhirServiceRequest>).entry?.[0]?.resource) ?? null;
 
     // Upsert PatientRef by tenantId + fhirId
-    const patientData = mapFhirPatient(fhirPatient, tenantId);
+    const mappedPatient = mapFhirPatient(fhirPatient, tenantId);
+    const patientData = {
+      tenantId:  mappedPatient.tenantId,
+      fhirId:    mappedPatient.fhirId,
+      name:      mappedPatient.name,
+      dob:       mappedPatient.dob,
+      gender:    mappedPatient.gender   ?? null,
+      mrn:       mappedPatient.mrn      ?? null,
+    };
     const patientRef  = await this.db.patientRef.upsert({
       where:  { tenantId_fhirId: { tenantId, fhirId: fhirPatient.id } },
       update: patientData,
@@ -51,7 +59,17 @@ export class EhrService {
     // Upsert CoverageRef by tenantId + fhirId (fhirId may be null for non-FHIR coverage)
     let coverageRefId: string | undefined;
     if (fhirCoverage) {
-      const coverageData = { ...mapFhirCoverage(fhirCoverage, tenantId, patientRef.id), fhirId: fhirCoverage.id };
+      const mapped = mapFhirCoverage(fhirCoverage, tenantId, patientRef.id);
+      const coverageData = {
+        fhirId:      fhirCoverage.id,
+        tenantId,
+        patientRefId: patientRef.id,
+        payerName:   mapped.payerName,
+        payerId:     mapped.payerId   ?? null,
+        planName:    mapped.planName  ?? null,
+        memberId:    mapped.memberId,
+        groupId:     mapped.groupId   ?? null,
+      };
       const existingCoverage = await this.db.coverageRef.findFirst({
         where: { tenantId, fhirId: fhirCoverage.id },
       });
@@ -69,8 +87,17 @@ export class EhrService {
     // Upsert OrderRef by tenantId + fhirId
     let orderRefId: string | undefined;
     if (fhirOrder) {
-      const orderData = mapFhirServiceRequest(fhirOrder, tenantId, patientRef.id);
-      const orderRef  = await this.db.orderRef.upsert({
+      const mapped = mapFhirServiceRequest(fhirOrder, tenantId, patientRef.id);
+      const orderData = {
+        tenantId,
+        fhirId:               fhirOrder.id,
+        patientRefId:         patientRef.id,
+        serviceType:          mapped.serviceType,
+        serviceCode:          mapped.serviceCode          ?? null,
+        orderingProviderRefId: mapped.orderingProviderRefId ?? null,
+        requestedAt:          mapped.requestedAt,
+      };
+      const orderRef = await this.db.orderRef.upsert({
         where:  { tenantId_fhirId: { tenantId, fhirId: fhirOrder.id } },
         update: orderData,
         create: orderData,

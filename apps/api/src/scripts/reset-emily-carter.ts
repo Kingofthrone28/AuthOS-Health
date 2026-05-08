@@ -82,7 +82,7 @@ async function main() {
     data: {
       tenantId:     tid,
       patientRefId: patient.id,
-      coverageRefId: coverage?.id ?? null,
+      coverageRefId: coverage!.id,
       orderRefId:   freshOrder.id,
       serviceType:  "Polysomnography Sleep Study",
       serviceCode:  "95810",

@@ -3,12 +3,12 @@ import { Readable } from "node:stream";
 
 export interface AuditQueryFilters {
   tenantId: string;
-  entityType?: string;
-  actorId?: string;
-  startDate?: Date;
-  endDate?: Date;
-  cursor?: string;
-  limit?: number;
+  entityType?: string | undefined;
+  actorId?: string | undefined;
+  startDate?: Date | undefined;
+  endDate?: Date | undefined;
+  cursor?: string | undefined;
+  limit?: number | undefined;
 }
 
 interface AuditRow {
