@@ -7,6 +7,7 @@ export default {
     "^@/(.*)$": "<rootDir>/src/$1",
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },
+  testPathIgnorePatterns: ["/dist/", "/.next/"],
   transform: {
     "^.+\\.tsx?$": [
       "ts-jest",
