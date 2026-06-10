@@ -13,7 +13,7 @@
   "scripts": {
     "build": "tsc",
     "type-check": "tsc --noEmit",
-    "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test": "node --experimental-vm-modules ../../node_modules/.bin/jest",
     "clean": "rm -rf dist"
   },
   "dependencies": {
