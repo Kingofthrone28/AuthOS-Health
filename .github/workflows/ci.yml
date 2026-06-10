@@ -26,11 +26,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Build packages
-        run: npm run build -ws --if-present --workspaces-names packages/*
+      - name: Build
+        run: npm run build
 
       - name: Test
         run: npm test
-
-      - name: Build apps
-        run: npm run build -ws --if-present --workspaces-names apps/*
