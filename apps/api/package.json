@@ -16,6 +16,7 @@
   "dependencies": {
     "@authos/audit": "*",
     "@authos/domain": "*",
+    "@authos/fhir-adapters": "*",
     "@authos/payer-adapters": "*",
     "@authos/shared-types": "*",
     "@authos/voice-adapters": "*",
