@@ -8,7 +8,7 @@
     "dev": "prisma generate --schema=../api/prisma/schema.prisma && tsx watch src/index.ts",
     "start": "node dist/index.js",
     "type-check": "prisma generate --schema=../api/prisma/schema.prisma && tsc --noEmit",
-    "lint": "eslint src",
+    "lint": "eslint \"src/**/*.{ts,tsx,js,mjs,cjs}\"",
     "test": "node --experimental-vm-modules ../../node_modules/.bin/jest",
     "clean": "rm -rf dist"
   },
