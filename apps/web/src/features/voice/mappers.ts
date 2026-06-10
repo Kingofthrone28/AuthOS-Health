@@ -27,6 +27,7 @@ export function mapTranscriptToViewModel(t: TranscriptListItem): TranscriptRowVi
     eventCount:         t.extractedEvents.length,
     pendingReviewCount,
     hasText:            !!t.transcriptText,
+    transcriptPreview:  t.transcriptText?.trim() || null,
   };
 }
 

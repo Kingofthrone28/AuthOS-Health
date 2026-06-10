@@ -9,6 +9,12 @@ export type SessionDoneCallback = (
   durationMs: number
 ) => Promise<void>;
 
+export type SessionUpdateCallback = (
+  session: CallSession,
+  transcriptText: string,
+  durationMs: number
+) => Promise<void>;
+
 export class CallSession {
   private readonly finalSegments: string[] = [];
   private readonly startTime: Date;
@@ -19,12 +25,20 @@ export class CallSession {
     readonly caseId:   string | null,
     readonly tenantId: string,
     private readonly stt:    SttClient,
-    private readonly onDone: SessionDoneCallback
+    private readonly onDone: SessionDoneCallback,
+    private readonly onUpdate?: SessionUpdateCallback
   ) {
     this.startTime = new Date();
 
     stt.onTranscript((text, _isFinal) => {
-      if (text) this.finalSegments.push(text);
+      if (!text) return;
+
+      this.finalSegments.push(text);
+      const transcriptText = this.finalSegments.join(" ").trim();
+      const durationMs = Date.now() - this.startTime.getTime();
+      void this.onUpdate?.(this, transcriptText, durationMs).catch((err) => {
+        console.error(`[${callSid}] live transcript update error:`, err);
+      });
     });
 
     stt.onError((err) => {

@@ -3,6 +3,7 @@ import { z } from "zod";
 import twilio from "twilio";
 import { ctx } from "../lib/context.js";
 import { ApiError } from "../middleware/errorHandler.js";
+import { startMockPayerCall } from "../services/mockVoiceCallService.js";
 
 export const casesRouter = Router();
 
@@ -18,6 +19,7 @@ const CreateCaseSchema = z.object({
 
 const StartCallSchema = z.object({
   toNumber: z.string().trim().min(1).optional(),
+  notes: z.string().trim().min(1).optional(),
 });
 
 // POST /api/cases
@@ -92,9 +94,23 @@ casesRouter.post("/:id/calls/start", async (req, res, next) => {
     const accountSid = process.env["TWILIO_ACCOUNT_SID"];
     const authToken = process.env["TWILIO_AUTH_TOKEN"];
     const fromNumber = process.env["TWILIO_FROM_NUMBER"];
+    const callMode = resolveCallMode(accountSid, authToken, fromNumber);
     const toNumber =
       parsed.data.toNumber ??
       process.env["TWILIO_DEFAULT_PAYER_PHONE"];
+
+    if (callMode === "mock") {
+      const mockCall = await startMockPayerCall(ctx.voiceService, {
+        tenantId,
+        caseId,
+        payerName: authCase.payerName,
+        ...(parsed.data.notes ? { notes: parsed.data.notes } : {}),
+        ...(actorId ? { actorId } : {}),
+      });
+      res.status(201).json(mockCall);
+      return;
+    }
+
     const twimlUrl = buildTwimlUrl(tenantId, caseId);
 
     if (!accountSid || !authToken || !fromNumber) {
@@ -191,4 +207,17 @@ function buildTwimlUrl(tenantId: string, caseId: string): string {
   url.searchParams.set("caseId", caseId);
   url.searchParams.set("direction", "outbound");
   return url.toString();
+}
+
+function resolveCallMode(
+  accountSid?: string,
+  authToken?: string,
+  fromNumber?: string
+): "mock" | "twilio" {
+  const configuredMode = (process.env["VOICE_CALL_MODE"] ?? "").trim().toLowerCase();
+  if (configuredMode === "mock" || configuredMode === "twilio") {
+    return configuredMode;
+  }
+
+  return accountSid && authToken && fromNumber ? "twilio" : "mock";
 }

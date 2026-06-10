@@ -75,3 +75,31 @@ export async function processCompletedTranscript(
 
   return { transcriptId, eventsExtracted: events.length };
 }
+
+export async function publishLiveTranscriptUpdate(payload: {
+  callSid: string;
+  tenantId: string;
+  caseId?: string | null | undefined;
+  direction?: "inbound" | "outbound" | undefined;
+  transcriptText: string;
+}): Promise<void> {
+  const res = await fetch(`${API_URL}/api/voice/webhooks/transcript/live`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-tenant-id":  payload.tenantId,
+    },
+    body: JSON.stringify({
+      callSid:        payload.callSid,
+      ...(payload.caseId !== undefined ? { caseId: payload.caseId } : {}),
+      ...(payload.direction ? { direction: payload.direction } : {}),
+      transcriptText: payload.transcriptText,
+    }),
+  });
+
+  if (!res.ok) {
+    throw new Error(
+      `Failed to persist live transcript for call ${payload.callSid}: ${res.status}`
+    );
+  }
+}

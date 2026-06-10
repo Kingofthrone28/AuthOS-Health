@@ -23,6 +23,7 @@ describe("TranscriptFeed", () => {
         eventCount: 2,
         pendingReviewCount: 1,
         hasText: true,
+        transcriptPreview: "Payer shared a reference number and requested updated notes.",
       },
       {
         id: "transcript-active",
@@ -35,6 +36,7 @@ describe("TranscriptFeed", () => {
         eventCount: 0,
         pendingReviewCount: 0,
         hasText: false,
+        transcriptPreview: null,
       },
     ];
 
@@ -46,9 +48,11 @@ describe("TranscriptFeed", () => {
     expect(html).toContain("inbound");
     expect(html).toContain("2m 10s");
     expect(html).toContain("1 pending");
+    expect(html).toContain("Payer shared a reference number");
     expect(html).toContain("CA_ACTIVE_002");
     expect(html).toContain("Unlinked");
     expect(html).toContain("Active");
     expect(html).toContain("in progress");
+    expect(html).toContain("Transcript pending completion.");
   });
 });

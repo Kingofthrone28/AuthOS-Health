@@ -23,8 +23,25 @@ export async function apiFetch<T>(
   });
 
   if (!res.ok) {
-    throw new Error(`API ${res.status}: ${path}`);
+    const errorMessage = await readErrorMessage(res);
+    throw new Error(errorMessage ?? `API ${res.status}: ${path}`);
   }
 
   return res.json() as Promise<T>;
+}
+
+async function readErrorMessage(res: Response): Promise<string | null> {
+  const contentType = res.headers.get("content-type") ?? "";
+
+  try {
+    if (contentType.includes("application/json")) {
+      const data = await res.json() as { error?: string; message?: string };
+      return data.error ?? data.message ?? null;
+    }
+
+    const text = await res.text();
+    return text.trim() || null;
+  } catch {
+    return null;
+  }
 }

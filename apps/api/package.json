@@ -18,6 +18,7 @@
     "@authos/domain": "*",
     "@authos/payer-adapters": "*",
     "@authos/shared-types": "*",
+    "@authos/voice-adapters": "*",
     "@node-saml/node-saml": "^5.1.0",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",

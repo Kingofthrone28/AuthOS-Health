@@ -4,6 +4,8 @@ import { useEffect, useState, useTransition } from "react";
 import { PhoneCall } from "lucide-react";
 import { fetchActiveCall, type ActiveCallViewModel } from "../actions";
 
+const POLL_INTERVAL_MS = 5_000;
+
 interface ActiveCallBannerProps {
   caseId: string;
 }
@@ -27,7 +29,7 @@ export function ActiveCallBanner({ caseId }: ActiveCallBannerProps) {
     };
 
     refresh();
-    const id = window.setInterval(refresh, 15000);
+    const id = window.setInterval(refresh, POLL_INTERVAL_MS);
 
     return () => {
       alive = false;

@@ -35,6 +35,24 @@ cp apps/worker-voice/.env.example apps/worker-voice/.env
 cp apps/worker-workflow/.env.example apps/worker-workflow/.env
 ```
 
+### Twilio trial setup for live voice
+
+For mock calls only, keep `VOICE_CALL_MODE=mock` in `apps/api/.env`.
+
+For real Twilio calls with live transcript updates in `/voice`:
+
+1. In `apps/api/.env`, set:
+   `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`
+2. In `apps/worker-voice/.env`, set:
+   `WORKER_PUBLIC_URL`, `WORKER_WS_URL`, `STT_API_KEY`
+3. Expose the voice worker publicly over `https`/`wss` so Twilio can reach it.
+   `WORKER_PUBLIC_URL` should resolve to `https://.../voice/twiml`
+   `WORKER_WS_URL` should resolve to `wss://...`
+4. In a Twilio trial account, the destination number must be verified first.
+5. Restart `apps/api` and `apps/worker-voice` after changing env values.
+
+The dashboard still runs locally on `http://localhost:3000`; only the voice worker needs a public endpoint for Twilio media streaming.
+
 ### Run tests
 
 ```bash

@@ -13,7 +13,7 @@ import type { IncomingMessage } from "http";
 import { URL } from "url";
 import { CallSession } from "../services/callSession.js";
 import { createSttClient } from "../services/sttClient.js";
-import { processCompletedTranscript } from "../services/transcriptPipeline.js";
+import { processCompletedTranscript, publishLiveTranscriptUpdate } from "../services/transcriptPipeline.js";
 
 // ─── Twilio message shapes ────────────────────────────────────────────────────
 
@@ -102,6 +102,17 @@ twilioMediaWss.on("connection", (ws: WebSocket, req: IncomingMessage) => {
               // Log but do not throw — the transcript buffer is not lost; caller can reprocess
               console.error(`[${s.callSid}] pipeline error:`, err);
             }
+          },
+          async (s, transcriptText) => {
+            if (!transcriptText.trim()) return;
+
+            await publishLiveTranscriptUpdate({
+              callSid:        s.callSid,
+              tenantId:       s.tenantId,
+              caseId:         s.caseId,
+              direction,
+              transcriptText,
+            });
           }
         );
 

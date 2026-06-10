@@ -9,6 +9,11 @@ export interface ActiveCallViewModel {
   startedAt: string;
 }
 
+export interface StartPayerCallInput {
+  toNumber?: string;
+  notes?: string;
+}
+
 interface ActiveCallApiResponse {
   activeCall: {
     callSid: string;
@@ -18,11 +23,14 @@ interface ActiveCallApiResponse {
 
 export async function startPayerCall(
   caseId: string,
-  toNumber?: string
+  input: StartPayerCallInput = {}
 ): Promise<{ callSid: string }> {
   const session = await requireSession();
 
-  const body = toNumber ? { toNumber } : {};
+  const body = {
+    ...(input.toNumber ? { toNumber: input.toNumber } : {}),
+    ...(input.notes ? { notes: input.notes } : {}),
+  };
   const result = await apiFetch<{ callSid: string }>(`/api/cases/${caseId}/calls/start`, {
     tenantId:    session.tenantId,
     accessToken: session.accessToken,

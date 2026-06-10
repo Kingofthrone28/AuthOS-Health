@@ -1,8 +1,10 @@
 # AuthOS-Health
 
-SMART-on-FHIR prior authorization cockpit. Turns payer calls and clinician dictation into structured auth actions, auto-builds documentation packets, tracks SLA deadlines, and surfaces denial reasons — all in one case timeline.
+AuthOS Health gives hospitals one real-time control center for approvals, denials, documentation, payer follow-up, and staff workflow.
 
-Supports three launch modes: embedded in an EHR, standalone browser, and backend-service automation.
+Launch from the EHR, track every case in one timeline, convert Voice AI calls into structured actions, and keep prior auth moving before delays turn into denials.
+
+Built for hospitals, specialty groups, and prior authorization teams that need faster approvals, fewer manual follow-ups, and better visibility across the full auth lifecycle.
 
 ---
 
@@ -468,6 +470,15 @@ npm run dev -w apps/worker-voice
 npm run dev -w apps/worker-workflow
 npm run dev -w apps/mock-crd
 ```
+
+**Optional: enable Twilio live voice**
+
+For real-time transcription during an active Twilio call, configure:
+
+- `apps/api/.env`: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`
+- `apps/worker-voice/.env`: `WORKER_PUBLIC_URL`, `WORKER_WS_URL`, `STT_API_KEY`
+
+In a Twilio trial account, call only verified destination numbers. The worker must be reachable from Twilio over public `https`/`wss`.
 
 **6. Open the dashboard**
 

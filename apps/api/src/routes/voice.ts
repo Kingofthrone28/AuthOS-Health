@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { ctx } from "../lib/context.js";
+import { subscribeToVoiceEvents } from "../lib/voiceEventBus.js";
 
 export const voiceRouter = Router();
 
@@ -12,6 +13,13 @@ const TranscriptBodySchema = z.object({
   durationSeconds: z.number().optional(),
   provider:        z.string(),
   completedAt:     z.string(),
+});
+
+const LiveTranscriptBodySchema = z.object({
+  callSid:        z.string(),
+  caseId:         z.string().nullable().optional(),
+  direction:      z.enum(["inbound", "outbound"]).optional(),
+  transcriptText: z.string(),
 });
 
 const ExtractionBodySchema = z.object({
@@ -58,6 +66,33 @@ voiceRouter.get("/transcripts", async (_req, res, next) => {
   }
 });
 
+// GET /api/voice/stream
+// Server-sent events stream for low-latency voice dashboard refreshes.
+voiceRouter.get("/stream", (req, res) => {
+  const { tenantId } = res.locals as { tenantId: string };
+
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  res.write(`data: ${JSON.stringify({ type: "connected", occurredAt: new Date().toISOString() })}\n\n`);
+
+  const unsubscribe = subscribeToVoiceEvents(tenantId, (event) => {
+    res.write(`data: ${JSON.stringify(event)}\n\n`);
+  });
+
+  const heartbeat = setInterval(() => {
+    res.write(": keep-alive\n\n");
+  }, 15_000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+    res.end();
+  });
+});
+
 // GET /api/voice/events/pending
 // Extracted events waiting for human review.
 voiceRouter.get("/events/pending", async (_req, res, next) => {
@@ -98,6 +133,30 @@ voiceRouter.post("/webhooks/transcript", async (req, res, next) => {
     });
 
     res.json({ transcriptId: transcript.id });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/voice/webhooks/transcript/live
+// Persists in-progress transcript text during an active call.
+voiceRouter.post("/webhooks/transcript/live", async (req, res, next) => {
+  try {
+    const parsed = LiveTranscriptBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.message });
+      return;
+    }
+
+    const { tenantId } = res.locals as { tenantId: string };
+    const transcript = await ctx.voiceService.updateLiveTranscript(tenantId, {
+      callSid:        parsed.data.callSid,
+      ...(parsed.data.caseId !== undefined ? { caseId: parsed.data.caseId } : {}),
+      ...(parsed.data.direction ? { direction: parsed.data.direction } : {}),
+      transcriptText: parsed.data.transcriptText,
+    });
+
+    res.json({ transcriptId: transcript.id, status: transcript.status });
   } catch (err) {
     next(err);
   }

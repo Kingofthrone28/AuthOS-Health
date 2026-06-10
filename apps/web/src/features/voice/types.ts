@@ -9,6 +9,7 @@ export interface TranscriptRowViewModel {
   eventCount:         number;
   pendingReviewCount: number;
   hasText:            boolean;
+  transcriptPreview:  string | null;
 }
 
 export interface PendingEventViewModel {

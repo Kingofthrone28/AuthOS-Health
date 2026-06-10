@@ -2,6 +2,7 @@ import type { PrismaClient } from "@prisma/client";
 import type { TranscriptWebhookPayload, RawExtractedEvent } from "@authos/voice-adapters";
 import { requiresHumanReview, AUTO_APPLY_EVENT_TYPES, DomainEvents } from "@authos/domain";
 import type { AuditService } from "./auditService.js";
+import { publishVoiceEvent } from "../lib/voiceEventBus.js";
 
 export interface StartCallTranscriptInput {
   caseId: string;
@@ -9,6 +10,14 @@ export interface StartCallTranscriptInput {
   direction: "inbound" | "outbound";
   startedAt?: Date | undefined;
   actorId?: string | undefined;
+}
+
+export interface LiveTranscriptUpdateInput {
+  callSid: string;
+  caseId?: string | null | undefined;
+  direction?: "inbound" | "outbound" | undefined;
+  transcriptText: string;
+  startedAt?: Date | undefined;
 }
 
 export class VoiceService {
@@ -48,6 +57,46 @@ export class VoiceService {
       after:      { callSid: input.callSid, caseId: input.caseId, direction: input.direction },
     });
 
+    publishVoiceEvent({
+      tenantId,
+      type: "call_started",
+      callSid: transcript.callSid,
+      transcriptId: transcript.id,
+      caseId: transcript.caseId,
+    });
+
+    return transcript;
+  }
+
+  async updateLiveTranscript(tenantId: string, input: LiveTranscriptUpdateInput) {
+    const startedAt = input.startedAt ?? new Date();
+    const transcript = await this.db.callTranscript.upsert({
+      where: { callSid: input.callSid },
+      create: {
+        tenantId,
+        caseId:         input.caseId ?? null,
+        callSid:        input.callSid,
+        direction:      input.direction ?? "inbound",
+        status:         "IN_PROGRESS",
+        startedAt,
+        transcriptText: input.transcriptText,
+      },
+      update: {
+        ...(input.caseId !== undefined ? { caseId: input.caseId } : {}),
+        ...(input.direction ? { direction: input.direction } : {}),
+        status:         "IN_PROGRESS",
+        transcriptText: input.transcriptText,
+      },
+    });
+
+    publishVoiceEvent({
+      tenantId,
+      type: "transcript_live",
+      callSid: transcript.callSid,
+      transcriptId: transcript.id,
+      caseId: transcript.caseId,
+    });
+
     return transcript;
   }
 
@@ -85,6 +134,14 @@ export class VoiceService {
       entityId:   transcript.id,
       action:     DomainEvents.TRANSCRIPT_RECEIVED,
       after:      { callSid: payload.callSid, caseId: transcript.caseId, status: transcript.status },
+    });
+
+    publishVoiceEvent({
+      tenantId,
+      type: "transcript_completed",
+      callSid: transcript.callSid,
+      transcriptId: transcript.id,
+      caseId: transcript.caseId,
     });
 
     return transcript;
@@ -136,6 +193,13 @@ export class VoiceService {
       entityId:   transcriptId,
       action:     DomainEvents.EVENT_EXTRACTED,
       after:      { extracted: events.length, routedToReview },
+    });
+
+    publishVoiceEvent({
+      tenantId,
+      type: "events_extracted",
+      transcriptId,
+      caseId,
     });
 
     return { persisted: events.length, routedToReview };
@@ -201,11 +265,18 @@ export class VoiceService {
       after:   { decision },
     });
 
-    if (decision !== "approved") return;
-
     const event = await this.db.extractedEvent.findUniqueOrThrow({
       where: { id: eventId },
     });
+
+    publishVoiceEvent({
+      tenantId,
+      type: "review_processed",
+      transcriptId: event.transcriptId,
+      caseId: event.caseId,
+    });
+
+    if (decision !== "approved") return;
 
     if (!AUTO_APPLY_EVENT_TYPES.has(event.eventType as never)) return;
 
@@ -254,5 +325,6 @@ export class VoiceService {
         after:      { taskType: "callback_deadline", value: event.value, sourceEventId: eventId },
       });
     }
+
   }
 }
