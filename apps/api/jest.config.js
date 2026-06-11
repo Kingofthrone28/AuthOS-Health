@@ -1,8 +1,9 @@
 import { config } from "dotenv";
 import { resolve } from "path";
 
-// Load .env so Prisma Client has DATABASE_URL without requiring shell export
+// Load local env first, then fall back to the example file for CI.
 config({ path: resolve(process.cwd(), ".env") });
+config({ path: resolve(process.cwd(), ".env.example"), override: false });
 
 /** @type {import('jest').Config} */
 export default {
