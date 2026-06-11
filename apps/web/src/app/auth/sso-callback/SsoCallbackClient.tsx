@@ -10,7 +10,7 @@ export function SsoCallbackClient() {
   useEffect(() => {
     const token = searchParams.get("token");
     const tenantId = searchParams.get("tenantId");
-
+    // toeken & session 
     if (token && tenantId) {
       sessionStorage.setItem("accessToken", token);
       sessionStorage.setItem("tenantId", tenantId);
