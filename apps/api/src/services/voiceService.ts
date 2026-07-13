@@ -1,8 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
 import type { TranscriptWebhookPayload, RawExtractedEvent } from "@authos/voice-adapters";
 import { requiresHumanReview, AUTO_APPLY_EVENT_TYPES, DomainEvents } from "@authos/domain";
-import type { AuditService } from "./auditService.js";
+import { AuditService } from "./auditService.js";
 import { publishVoiceEvent } from "../lib/voiceEventBus.js";
+import { withTenant } from "../lib/prisma.js";
 
 export interface StartCallTranscriptInput {
   caseId: string;
@@ -29,7 +30,8 @@ export class VoiceService {
   async startCallTranscript(tenantId: string, input: StartCallTranscriptInput) {
     const startedAt = input.startedAt ?? new Date();
 
-    const transcript = await this.db.callTranscript.upsert({
+    const transcript = await withTenant(this.db, tenantId, async (tx) => {
+      const transcript = await tx.callTranscript.upsert({
       where: { callSid: input.callSid },
       create: {
         tenantId,
@@ -46,15 +48,16 @@ export class VoiceService {
         status:    "IN_PROGRESS",
         startedAt,
       },
-    });
-
-    await this.audit.emit({
+      });
+      await new AuditService(tx).emit({
       tenantId,
       entityType: "CallTranscript",
       entityId:   transcript.id,
       action:     DomainEvents.CALL_STARTED,
       ...(input.actorId ? { actorId: input.actorId } : {}),
       after:      { callSid: input.callSid, caseId: input.caseId, direction: input.direction },
+      });
+      return transcript;
     });
 
     publishVoiceEvent({
@@ -70,7 +73,7 @@ export class VoiceService {
 
   async updateLiveTranscript(tenantId: string, input: LiveTranscriptUpdateInput) {
     const startedAt = input.startedAt ?? new Date();
-    const transcript = await this.db.callTranscript.upsert({
+    const transcript = await withTenant(this.db, tenantId, (tx) => tx.callTranscript.upsert({
       where: { callSid: input.callSid },
       create: {
         tenantId,
@@ -87,7 +90,7 @@ export class VoiceService {
         status:         "IN_PROGRESS",
         transcriptText: input.transcriptText,
       },
-    });
+    }));
 
     publishVoiceEvent({
       tenantId,
@@ -122,18 +125,20 @@ export class VoiceService {
       endedAt:         completedAt,
     };
 
-    const transcript = await this.db.callTranscript.upsert({
+    const transcript = await withTenant(this.db, tenantId, async (tx) => {
+      const transcript = await tx.callTranscript.upsert({
       where:  { callSid: payload.callSid },
       create: createData,
       update: updateData,
-    });
-
-    await this.audit.emit({
+      });
+      await new AuditService(tx).emit({
       tenantId,
       entityType: "CallTranscript",
       entityId:   transcript.id,
       action:     DomainEvents.TRANSCRIPT_RECEIVED,
       after:      { callSid: payload.callSid, caseId: transcript.caseId, status: transcript.status },
+      });
+      return transcript;
     });
 
     publishVoiceEvent({
@@ -155,11 +160,12 @@ export class VoiceService {
   ): Promise<{ persisted: number; routedToReview: number }> {
     let routedToReview = 0;
 
+    await withTenant(this.db, tenantId, async (tx) => {
     for (const event of events) {
       const isAutoApplyType = AUTO_APPLY_EVENT_TYPES.has(event.eventType as never);
       const needsReview = requiresHumanReview(event) || !isAutoApplyType;
 
-      await this.db.extractedEvent.create({
+      await tx.extractedEvent.create({
         data: {
           tenantId,
           transcriptId,
@@ -174,7 +180,7 @@ export class VoiceService {
 
       if (needsReview) {
         routedToReview++;
-        await this.db.task.create({
+        await tx.task.create({
           data: {
             tenantId,
             caseId,
@@ -187,12 +193,13 @@ export class VoiceService {
       }
     }
 
-    await this.audit.emit({
+    await new AuditService(tx).emit({
       tenantId,
       entityType: "CallTranscript",
       entityId:   transcriptId,
       action:     DomainEvents.EVENT_EXTRACTED,
       after:      { extracted: events.length, routedToReview },
+    });
     });
 
     publishVoiceEvent({
@@ -206,40 +213,43 @@ export class VoiceService {
   }
 
   async getVoiceStats(tenantId: string) {
-    const [transcriptCount, eventCount, pendingCount] = await Promise.all([
-      this.db.callTranscript.count({ where: { tenantId } }),
-      this.db.extractedEvent.count({ where: { tenantId } }),
-      this.db.extractedEvent.count({ where: { tenantId, reviewStatus: "pending" } }),
-    ]);
+    const { transcriptCount, eventCount, pendingCount } = await withTenant(this.db, tenantId, async (tx) => {
+      const [transcriptCount, eventCount, pendingCount] = await Promise.all([
+        tx.callTranscript.count({ where: { tenantId } }),
+        tx.extractedEvent.count({ where: { tenantId } }),
+        tx.extractedEvent.count({ where: { tenantId, reviewStatus: "pending" } }),
+      ]);
+      return { transcriptCount, eventCount, pendingCount };
+    });
     return { transcriptCount, eventCount, pendingCount };
   }
 
   async listTranscripts(tenantId: string, limit = 20) {
-    return this.db.callTranscript.findMany({
+    return withTenant(this.db, tenantId, (tx) => tx.callTranscript.findMany({
       where:   { tenantId },
       include: { extractedEvents: { select: { id: true, reviewStatus: true } } },
       orderBy: { startedAt: "desc" },
       take:    limit,
-    });
+    }));
   }
 
   async getActiveTranscriptForCase(tenantId: string, caseId: string) {
-    return this.db.callTranscript.findFirst({
+    return withTenant(this.db, tenantId, (tx) => tx.callTranscript.findFirst({
       where: {
         tenantId,
         caseId,
         status: "IN_PROGRESS",
       },
       orderBy: { startedAt: "desc" },
-    });
+    }));
   }
 
   async listPendingEvents(tenantId: string, limit = 50) {
-    return this.db.extractedEvent.findMany({
+    return withTenant(this.db, tenantId, (tx) => tx.extractedEvent.findMany({
       where:   { tenantId, reviewStatus: "pending" },
       orderBy: { extractedAt: "desc" },
       take:    limit,
-    });
+    }));
   }
 
   async processReview(
@@ -248,25 +258,74 @@ export class VoiceService {
     decision: "approved" | "rejected",
     reviewedBy: string
   ): Promise<void> {
-    await this.db.extractedEvent.update({
-      where: { id: eventId },
-      data:  { reviewStatus: decision, reviewedBy, reviewedAt: new Date() },
-    });
+    const event = await withTenant(this.db, tenantId, async (tx) => {
+      const event = await tx.extractedEvent.findFirstOrThrow({ where: { id: eventId, tenantId } });
+      await tx.extractedEvent.update({
+        where: { id: eventId },
+        data: { reviewStatus: decision, reviewedBy, reviewedAt: new Date() },
+      });
 
-    await this.audit.emit({
-      tenantId,
-      entityType: "ExtractedEvent",
-      entityId:   eventId,
-      action:
-        decision === "approved"
-          ? DomainEvents.EVENT_APPROVED
-          : DomainEvents.EVENT_REJECTED,
-      actorId: reviewedBy,
-      after:   { decision },
-    });
+      const audit = new AuditService(tx);
+      await audit.emit({
+        tenantId,
+        entityType: "ExtractedEvent",
+        entityId: eventId,
+        action: decision === "approved" ? DomainEvents.EVENT_APPROVED : DomainEvents.EVENT_REJECTED,
+        actorId: reviewedBy,
+        after: { decision },
+      });
 
-    const event = await this.db.extractedEvent.findUniqueOrThrow({
-      where: { id: eventId },
+      if (decision !== "approved" || !AUTO_APPLY_EVENT_TYPES.has(event.eventType as never)) {
+        return event;
+      }
+
+      if (event.eventType === "reference_number" || event.eventType === "approval_number") {
+        const authCase = await tx.authorizationCase.findFirstOrThrow({ where: { id: event.caseId, tenantId } });
+        const result = await tx.authorizationCase.updateMany({
+          where: { id: event.caseId, tenantId, version: authCase.version },
+          data: {
+            ...(event.eventType === "reference_number"
+              ? { payerCaseRef: event.value }
+              : { approvalNumber: event.value }),
+            version: { increment: 1 },
+          },
+        });
+        if (result.count !== 1) throw new Error("Case changed while applying voice review");
+        await audit.emit({
+          tenantId,
+          entityType: "AuthorizationCase",
+          entityId: event.caseId,
+          action: DomainEvents.EVENT_APPLIED_TO_CASE,
+          actorId: reviewedBy,
+          after: {
+            eventType: event.eventType,
+            sourceEventId: eventId,
+            ...(event.eventType === "reference_number"
+              ? { payerCaseRef: event.value }
+              : { approvalNumber: event.value }),
+          },
+        });
+      } else if (event.eventType === "callback_deadline") {
+        const task = await tx.task.create({
+          data: {
+            tenantId,
+            caseId: event.caseId,
+            type: "callback_deadline",
+            description: `Callback deadline from voice extraction: "${event.value}"`,
+            status: "open",
+          },
+        });
+        await audit.emit({
+          tenantId,
+          entityType: "Task",
+          entityId: task.id,
+          action: DomainEvents.EVENT_APPLIED_TO_CASE,
+          actorId: reviewedBy,
+          after: { taskType: "callback_deadline", sourceEventId: eventId },
+        });
+      }
+
+      return event;
     });
 
     publishVoiceEvent({
@@ -275,56 +334,6 @@ export class VoiceService {
       transcriptId: event.transcriptId,
       caseId: event.caseId,
     });
-
-    if (decision !== "approved") return;
-
-    if (!AUTO_APPLY_EVENT_TYPES.has(event.eventType as never)) return;
-
-    if (event.eventType === "reference_number") {
-      await this.db.authorizationCase.update({
-        where: { id: event.caseId },
-        data:  { payerCaseRef: event.value },
-      });
-      await this.audit.emit({
-        tenantId,
-        entityType: "AuthorizationCase",
-        entityId:   event.caseId,
-        action:     DomainEvents.EVENT_APPLIED_TO_CASE,
-        actorId:    reviewedBy,
-        after:      { payerCaseRef: event.value, sourceEventId: eventId },
-      });
-    } else if (event.eventType === "approval_number") {
-      await this.db.authorizationCase.update({
-        where: { id: event.caseId },
-        data:  { approvalNumber: event.value },
-      });
-      await this.audit.emit({
-        tenantId,
-        entityType: "AuthorizationCase",
-        entityId:   event.caseId,
-        action:     DomainEvents.EVENT_APPLIED_TO_CASE,
-        actorId:    reviewedBy,
-        after:      { approvalNumber: event.value, sourceEventId: eventId },
-      });
-    } else if (event.eventType === "callback_deadline") {
-      const task = await this.db.task.create({
-        data: {
-          tenantId,
-          caseId:      event.caseId,
-          type:        "callback_deadline",
-          description: `Callback deadline from voice extraction: "${event.value}"`,
-          status:      "open",
-        },
-      });
-      await this.audit.emit({
-        tenantId,
-        entityType: "Task",
-        entityId:   task.id,
-        action:     DomainEvents.EVENT_APPLIED_TO_CASE,
-        actorId:    reviewedBy,
-        after:      { taskType: "callback_deadline", value: event.value, sourceEventId: eventId },
-      });
-    }
 
   }
 }

@@ -1,23 +1,25 @@
 import type { PrismaClient } from "@prisma/client";
+import { withTenant } from "../lib/prisma.js";
 
 export class AnalyticsService {
   constructor(private readonly db: PrismaClient) {}
 
   async turnaroundMetrics(tenantId: string) {
-    const statusCounts = await this.db.authorizationCase.groupBy({
+    return withTenant(this.db, tenantId, async (tx) => {
+    const statusCounts = await tx.authorizationCase.groupBy({
       by: ["status"],
       where: { tenantId },
       _count: { id: true },
     });
 
-    const priorityCounts = await this.db.authorizationCase.groupBy({
+    const priorityCounts = await tx.authorizationCase.groupBy({
       by: ["priority"],
       where: { tenantId },
       _count: { id: true },
     });
 
     // Avg turnaround: time from createdAt to updatedAt for terminal cases
-    const terminalCases = await this.db.authorizationCase.findMany({
+    const terminalCases = await tx.authorizationCase.findMany({
       where: {
         tenantId,
         status: { in: ["approved", "denied", "closed"] },
@@ -55,18 +57,20 @@ export class AnalyticsService {
         turnaroundByPriority,
       },
     };
+    });
   }
 
   async denialMetrics(tenantId: string) {
-    const deniedCases = await this.db.authorizationCase.count({
+    return withTenant(this.db, tenantId, async (tx) => {
+    const deniedCases = await tx.authorizationCase.count({
       where: { tenantId, status: "denied" },
     });
 
-    const totalCases = await this.db.authorizationCase.count({
+    const totalCases = await tx.authorizationCase.count({
       where: { tenantId },
     });
 
-    const topDenialReasons = await this.db.payerResponse.groupBy({
+    const topDenialReasons = await tx.payerResponse.groupBy({
       by: ["denialReason"],
       where: {
         tenantId,
@@ -78,7 +82,7 @@ export class AnalyticsService {
       take: 10,
     });
 
-    const denialsByMonth = await this.db.payerResponse.findMany({
+    const denialsByMonth = await tx.payerResponse.findMany({
       where: {
         tenantId,
         decision: "denied",
@@ -109,16 +113,18 @@ export class AnalyticsService {
         })),
       },
     };
+    });
   }
 
   async payerMetrics(tenantId: string) {
-    const payerCounts = await this.db.authorizationCase.groupBy({
+    return withTenant(this.db, tenantId, async (tx) => {
+    const payerCounts = await tx.authorizationCase.groupBy({
       by: ["payerName"],
       where: { tenantId },
       _count: { id: true },
     });
 
-    const payerDecisions = await this.db.payerResponse.findMany({
+    const payerDecisions = await tx.payerResponse.findMany({
       where: { tenantId },
       select: {
         decision: true,
@@ -171,10 +177,12 @@ export class AnalyticsService {
       metric: "payers",
       data: payerSummaries,
     };
+    });
   }
 
   async staffMetrics(tenantId: string) {
-    const casesByStaff = await this.db.authorizationCase.groupBy({
+    return withTenant(this.db, tenantId, async (tx) => {
+    const casesByStaff = await tx.authorizationCase.groupBy({
       by: ["assignedTo"],
       where: {
         tenantId,
@@ -183,7 +191,7 @@ export class AnalyticsService {
       _count: { id: true },
     });
 
-    const auditCounts = await this.db.auditEvent.groupBy({
+    const auditCounts = await tx.auditEvent.groupBy({
       by: ["actorId"],
       where: {
         tenantId,
@@ -202,18 +210,20 @@ export class AnalyticsService {
       metric: "staff",
       data: staffSummaries,
     };
+    });
   }
 
   async kpiSummary(tenantId: string) {
+    return withTenant(this.db, tenantId, async (tx) => {
     const SLA_HOURS: Record<string, number> = { urgent: 24, expedited: 72, standard: 336 };
 
     const [counts, activeCases] = await Promise.all([
-      this.db.authorizationCase.groupBy({
+      tx.authorizationCase.groupBy({
         by: ["status"],
         where: { tenantId },
         _count: { id: true },
       }),
-      this.db.authorizationCase.findMany({
+      tx.authorizationCase.findMany({
         where: {
           tenantId,
           status: { notIn: ["approved", "denied", "closed"] },
@@ -235,5 +245,6 @@ export class AnalyticsService {
     }).length;
 
     return { total, approved, denied, nearingBreach };
+    });
   }
 }

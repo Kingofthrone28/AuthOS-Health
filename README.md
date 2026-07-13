@@ -461,6 +461,9 @@ npx tsx apps/api/src/scripts/seed-sample-data.ts
 npm run dev
 ```
 
+The root `dev` script checks ports 3000-3006 before starting Turbo. If a port
+is already in use, stop the listed process or start only the workspace you need.
+
 Or start individually:
 
 ```bash

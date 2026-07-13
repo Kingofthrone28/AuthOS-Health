@@ -8,9 +8,9 @@ export async function VoicePageContainer() {
   const tenantId = session.tenantId;
 
   const [stats, transcripts, pendingEvents] = await Promise.all([
-    fetchVoiceStats(tenantId),
-    fetchTranscripts(tenantId),
-    fetchPendingEvents(tenantId),
+    fetchVoiceStats(tenantId, session.accessToken),
+    fetchTranscripts(tenantId, session.accessToken),
+    fetchPendingEvents(tenantId, session.accessToken),
   ]);
 
   const viewModel = buildVoicePageViewModel(stats, transcripts, pendingEvents);

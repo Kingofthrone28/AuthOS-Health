@@ -1,7 +1,9 @@
 import type { PrismaClient, CaseStatus, CasePriority } from "@prisma/client";
 import { assertValidTransition, calculateDueAt, DomainEvents } from "@authos/domain";
 import type { AuthorizationCaseStatus } from "@authos/shared-types";
-import type { AuditService } from "./auditService.js";
+import { AuditService } from "./auditService.js";
+import { withTenant } from "../lib/prisma.js";
+import { OptimisticLockError } from "./errors.js";
 
 export interface CreateCaseInput {
   patientRefId: string;
@@ -29,36 +31,53 @@ export class CaseService {
   async createCase(tenantId: string, input: CreateCaseInput) {
     const dueAt = calculateDueAt(input.priority as "standard" | "expedited" | "urgent");
 
-    const authCase = await this.db.authorizationCase.create({
-      data: {
+    return withTenant(this.db, tenantId, async (tx) => {
+      const [patient, coverage, order] = await Promise.all([
+        tx.patientRef.findFirst({ where: { id: input.patientRefId, tenantId } }),
+        tx.coverageRef.findFirst({ where: { id: input.coverageRefId, tenantId } }),
+        input.orderRefId
+          ? tx.orderRef.findFirst({ where: { id: input.orderRefId, tenantId } })
+          : Promise.resolve(null),
+      ]);
+
+      if (!patient || !coverage || (input.orderRefId && !order)) {
+        throw new Error("Case references must belong to the authenticated tenant");
+      }
+      if (coverage.patientRefId !== patient.id || (order && order.patientRefId !== patient.id)) {
+        throw new Error("Case references do not belong to the same patient");
+      }
+
+      const authCase = await tx.authorizationCase.create({
+        data: {
+          tenantId,
+          patientRefId:  input.patientRefId,
+          coverageRefId: input.coverageRefId,
+          orderRefId:    input.orderRefId ?? null,
+          serviceType:   input.serviceType,
+          serviceCode:   input.serviceCode ?? null,
+          priority:      input.priority,
+          payerName:     input.payerName,
+          createdBy:     input.createdBy,
+          dueAt,
+          status:        "new",
+        },
+      });
+
+      await new AuditService(tx).emit({
         tenantId,
-        patientRefId:  input.patientRefId,
-        coverageRefId: input.coverageRefId,
-        orderRefId:    input.orderRefId ?? null,
-        serviceType:   input.serviceType,
-        serviceCode:   input.serviceCode ?? null,
-        priority:      input.priority,
-        payerName:     input.payerName,
-        createdBy:     input.createdBy,
-        dueAt,
-        status:        "new",
-      },
-    });
+        entityType: "AuthorizationCase",
+        entityId:   authCase.id,
+        action:     DomainEvents.CASE_CREATED,
+        actorId:    input.createdBy,
+        after:      authCase as unknown as Record<string, unknown>,
+      });
 
-    await this.audit.emit({
-      tenantId,
-      entityType: "AuthorizationCase",
-      entityId:   authCase.id,
-      action:     DomainEvents.CASE_CREATED,
-      actorId:    input.createdBy,
-      after:      authCase as unknown as Record<string, unknown>,
+      return authCase;
     });
-
-    return authCase;
   }
 
   async listCases(tenantId: string, filters: ListCasesFilters) {
-    return this.db.authorizationCase.findMany({
+    return withTenant(this.db, tenantId, (tx) => tx.authorizationCase.findMany({
       where: {
         tenantId,
         ...(filters.status && filters.status !== "all"
@@ -77,11 +96,11 @@ export class CaseService {
       },
       include: { patient: true, coverage: true },
       orderBy: { dueAt: "asc" },
-    });
+    }));
   }
 
   async getCase(tenantId: string, id: string) {
-    return this.db.authorizationCase.findFirst({
+    return withTenant(this.db, tenantId, (tx) => tx.authorizationCase.findFirst({
       where: { id, tenantId },
       include: {
         patient:      true,
@@ -89,52 +108,59 @@ export class CaseService {
         requirements: true,
         submissions:  { include: { responses: true } },
         attachments:  true,
-        tasks:        { where: { completedAt: null } },
+        tasks:        { where: { status: "open", completedAt: null } },
       },
-    });
+    }));
   }
 
   async updateStatus(tenantId: string, id: string, newStatus: AuthorizationCaseStatus, actorId: string) {
-    const existing = await this.db.authorizationCase.findFirstOrThrow({ where: { id, tenantId } });
-    assertValidTransition(
-      existing.status as AuthorizationCaseStatus,
-      newStatus
-    );
+    return withTenant(this.db, tenantId, async (tx) => {
+      const existing = await tx.authorizationCase.findFirstOrThrow({ where: { id, tenantId } });
+      assertValidTransition(existing.status as AuthorizationCaseStatus, newStatus);
 
-    const updated = await this.db.authorizationCase.update({
-      where: { id },
-      data:  { status: newStatus as CaseStatus },
+      const result = await tx.authorizationCase.updateMany({
+        where: { id, tenantId, version: existing.version },
+        data: { status: newStatus as CaseStatus, version: { increment: 1 } },
+      });
+      if (result.count !== 1) throw new OptimisticLockError("AuthorizationCase", id);
+
+      const updated = await tx.authorizationCase.findUniqueOrThrow({ where: { id } });
+      await new AuditService(tx).emit({
+        tenantId,
+        entityType: "AuthorizationCase",
+        entityId:   id,
+        action:     DomainEvents.CASE_STATUS_CHANGED,
+        actorId,
+        before:     { status: existing.status, version: existing.version },
+        after:      { status: newStatus, version: updated.version },
+      });
+
+      return updated;
     });
-
-    await this.audit.emit({
-      tenantId,
-      entityType: "AuthorizationCase",
-      entityId:   id,
-      action:     DomainEvents.CASE_STATUS_CHANGED,
-      actorId,
-      before:     { status: existing.status },
-      after:      { status: newStatus },
-    });
-
-    return updated;
   }
 
   async assignCase(tenantId: string, id: string, assignedTo: string, actorId: string) {
-    const updated = await this.db.authorizationCase.update({
-      where: { id, tenantId },
-      data:  { assignedTo },
-    });
+    return withTenant(this.db, tenantId, async (tx) => {
+      const existing = await tx.authorizationCase.findFirstOrThrow({ where: { id, tenantId } });
+      const result = await tx.authorizationCase.updateMany({
+        where: { id, tenantId, version: existing.version },
+        data: { assignedTo, version: { increment: 1 } },
+      });
+      if (result.count !== 1) throw new OptimisticLockError("AuthorizationCase", id);
 
-    await this.audit.emit({
-      tenantId,
-      entityType: "AuthorizationCase",
-      entityId:   id,
-      action:     DomainEvents.CASE_ASSIGNED,
-      actorId,
-      after:      { assignedTo },
-    });
+      const updated = await tx.authorizationCase.findUniqueOrThrow({ where: { id } });
+      await new AuditService(tx).emit({
+        tenantId,
+        entityType: "AuthorizationCase",
+        entityId:   id,
+        action:     DomainEvents.CASE_ASSIGNED,
+        actorId,
+        before:     { assignedTo: existing.assignedTo, version: existing.version },
+        after:      { assignedTo, version: updated.version },
+      });
 
-    return updated;
+      return updated;
+    });
   }
 
   async closeCase(tenantId: string, id: string, actorId: string) {

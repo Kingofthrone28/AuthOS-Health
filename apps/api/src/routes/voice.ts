@@ -37,7 +37,6 @@ const ExtractionBodySchema = z.object({
 const ReviewBodySchema = z.object({
   extractedEventId: z.string(),
   decision:         z.enum(["approved", "rejected"]),
-  reviewedBy:       z.string(),
 });
 
 // ─── Read routes ──────────────────────────────────────────────────────────────
@@ -201,7 +200,7 @@ voiceRouter.post("/webhooks/event-extraction/review", async (req, res, next) => 
       tenantId,
       parsed.data.extractedEventId,
       parsed.data.decision,
-      parsed.data.reviewedBy
+      (res.locals["userId"] as string) ?? "system"
     );
 
     res.json({ processed: true });

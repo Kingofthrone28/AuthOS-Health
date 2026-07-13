@@ -7,6 +7,8 @@
   ],
   "scripts": {
     "build": "turbo build",
+    "dev:ports": "node scripts/check-dev-ports.mjs",
+    "predev": "node scripts/check-dev-ports.mjs",
     "dev": "turbo dev",
     "lint": "turbo lint",
     "test": "turbo test",

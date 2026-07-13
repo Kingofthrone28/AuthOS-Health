@@ -1,6 +1,8 @@
 import { type PrismaClient, type Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import type { AuditEmitter } from "@authos/audit";
+import { AuditService } from "./auditService.js";
+import { withTenant } from "../lib/prisma.js";
 
 export class TenantService {
   constructor(
@@ -17,37 +19,37 @@ export class TenantService {
       ? await bcrypt.hash(data.adminPassword, 12)
       : undefined;
 
-    const user = await this.db.user.create({
-      data: {
+    return withTenant(this.db, tenant.id, async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          tenantId: tenant.id,
+          email: data.adminEmail,
+          name: data.adminName,
+          role: "admin",
+          passwordHash: passwordHash ?? null,
+        },
+      });
+
+      await tx.tenantSettings.create({ data: { tenantId: tenant.id } });
+      await new AuditService(tx).emit({
         tenantId: tenant.id,
-        email: data.adminEmail,
-        name: data.adminName,
-        role: "admin",
-        passwordHash: passwordHash ?? null,
-      },
+        entityType: "Tenant",
+        entityId: tenant.id,
+        action: "tenant.created",
+        actorId: user.id,
+        after: { name: tenant.name, slug: tenant.slug },
+      });
+      return { tenant, user };
     });
-
-    await this.db.tenantSettings.create({
-      data: { tenantId: tenant.id },
-    });
-
-    await this.audit.emit({
-      tenantId: tenant.id,
-      entityType: "Tenant",
-      entityId: tenant.id,
-      action: "tenant.created",
-      actorId: user.id,
-      after: { name: tenant.name, slug: tenant.slug },
-    });
-
-    return { tenant, user };
   }
 
   async getById(id: string) {
-    return this.db.tenant.findUnique({
-      where: { id },
-      include: { settings: true },
-    });
+    const tenant = await this.db.tenant.findUnique({ where: { id } });
+    if (!tenant) return null;
+    const settings = await withTenant(this.db, id, (tx) =>
+      tx.tenantSettings.findUnique({ where: { tenantId: id } })
+    );
+    return { ...tenant, settings };
   }
 
   async updateSettings(
@@ -63,39 +65,36 @@ export class TenantService {
     },
     actorId: string,
   ) {
-    const before = await this.db.tenantSettings.findUnique({ where: { tenantId } });
+    return withTenant(this.db, tenantId, async (tx) => {
+      const before = await tx.tenantSettings.findUnique({ where: { tenantId } });
+      const prismaData = Object.fromEntries(
+        Object.entries(data).filter(([, v]) => v !== undefined)
+      ) as Prisma.TenantSettingsUpdateInput;
 
-    // Filter undefined values — Prisma nullable fields expect `T | null`,
-    // not `T | null | undefined`. Cast is safe: values come from Zod validation.
-    const prismaData = Object.fromEntries(
-      Object.entries(data).filter(([, v]) => v !== undefined)
-    ) as Prisma.TenantSettingsUpdateInput;
-
-    const settings = await this.db.tenantSettings.upsert({
-      where: { tenantId },
-      create: { tenantId, ...prismaData } as Prisma.TenantSettingsUncheckedCreateInput,
-      update: prismaData,
+      const settings = await tx.tenantSettings.upsert({
+        where: { tenantId },
+        create: { tenantId, ...prismaData } as Prisma.TenantSettingsUncheckedCreateInput,
+        update: prismaData,
+      });
+      await new AuditService(tx).emit({
+        tenantId,
+        entityType: "TenantSettings",
+        entityId: settings.id,
+        action: "tenant.settings.updated",
+        actorId,
+        before: before ?? undefined,
+        after: settings,
+      });
+      return settings;
     });
-
-    await this.audit.emit({
-      tenantId,
-      entityType: "TenantSettings",
-      entityId: settings.id,
-      action: "tenant.settings.updated",
-      actorId,
-      before: before ?? undefined,
-      after: settings,
-    });
-
-    return settings;
   }
 
   async listUsers(tenantId: string) {
-    return this.db.user.findMany({
+    return withTenant(this.db, tenantId, (tx) => tx.user.findMany({
       where: { tenantId },
       select: { id: true, email: true, name: true, role: true, createdAt: true },
       orderBy: { createdAt: "desc" },
-    });
+    }));
   }
 
   async createUser(
@@ -107,25 +106,25 @@ export class TenantService {
       ? await bcrypt.hash(data.password, 12)
       : undefined;
 
-    const user = await this.db.user.create({
-      data: {
+    return withTenant(this.db, tenantId, async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          tenantId,
+          email: data.email,
+          name: data.name,
+          role: (data.role as "admin" | "clinician" | "auth_specialist" | "manager" | "read_only") ?? "auth_specialist",
+          passwordHash: passwordHash ?? null,
+        },
+      });
+      await new AuditService(tx).emit({
         tenantId,
-        email: data.email,
-        name: data.name,
-        role: (data.role as "admin" | "clinician" | "auth_specialist" | "manager" | "read_only") ?? "auth_specialist",
-        passwordHash: passwordHash ?? null,
-      },
+        entityType: "User",
+        entityId: user.id,
+        action: "user.created",
+        actorId,
+        after: { email: user.email, name: user.name, role: user.role },
+      });
+      return { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.createdAt };
     });
-
-    await this.audit.emit({
-      tenantId,
-      entityType: "User",
-      entityId: user.id,
-      action: "user.created",
-      actorId,
-      after: { email: user.email, name: user.name, role: user.role },
-    });
-
-    return { id: user.id, email: user.email, name: user.name, role: user.role, createdAt: user.createdAt };
   }
 }

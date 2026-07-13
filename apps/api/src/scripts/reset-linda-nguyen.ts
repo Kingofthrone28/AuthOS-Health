@@ -89,19 +89,23 @@ async function main() {
   });
 
   // Seed realistic CATH requirements — both open so the full upload→complete flow can be tested
-  await db.authorizationRequirement.createMany({
-    data: [
-      { caseId: newCase.id, tenantId: tid, description: "Cardiology consult notes",                   source: "crd", required: true,  completed: false },
-      { caseId: newCase.id, tenantId: tid, description: "Stress test or non-invasive cardiac workup", source: "crd", required: true,  completed: false },
-      { caseId: newCase.id, tenantId: tid, description: "Supporting ICD-10 diagnosis codes",          source: "crd", required: true,  completed: false },
-    ],
-  });
+  const [consultNotes, stressTest] = await Promise.all([
+    db.authorizationRequirement.create({
+      data: { caseId: newCase.id, tenantId: tid, description: "Cardiology consult notes", source: "crd", required: true },
+    }),
+    db.authorizationRequirement.create({
+      data: { caseId: newCase.id, tenantId: tid, description: "Stress test or non-invasive cardiac workup", source: "crd", required: true },
+    }),
+    db.authorizationRequirement.create({
+      data: { caseId: newCase.id, tenantId: tid, description: "Supporting ICD-10 diagnosis codes", source: "crd", required: true },
+    }),
+  ]);
 
   // Collect tasks — one per open requirement
   await db.task.createMany({
     data: [
-      { tenantId: tid, caseId: newCase.id, type: "collect", description: "Obtain cardiology consult notes from attending cardiologist", assignedTo: userId, status: "open", dueAt },
-      { tenantId: tid, caseId: newCase.id, type: "collect", description: "Collect stress test results or non-invasive cardiac workup report", assignedTo: userId, status: "open", dueAt },
+      { tenantId: tid, caseId: newCase.id, requirementId: consultNotes.id, type: "collect", description: "Obtain cardiology consult notes from attending cardiologist", assignedTo: userId, status: "open", dueAt },
+      { tenantId: tid, caseId: newCase.id, requirementId: stressTest.id, type: "collect", description: "Collect stress test results or non-invasive cardiac workup report", assignedTo: userId, status: "open", dueAt },
     ],
   });
 

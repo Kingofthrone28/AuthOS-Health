@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 
 // Lazy singleton — defers `new PrismaClient()` until first access so that
 // DATABASE_URL is read at call time, not at module import time. This matters in
@@ -21,10 +21,16 @@ export function getPrismaClient(): PrismaClient {
 export async function withTenant<T>(
   db: PrismaClient,
   tenantId: string,
-  fn: (tx: PrismaClient) => Promise<T>,
+  fn: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
   return db.$transaction(async (tx) => {
-    await tx.$queryRawUnsafe(`SET LOCAL app.current_tenant = '${tenantId.replace(/'/g, "''")}'`);
-    return fn(tx as unknown as PrismaClient);
+    // set_config is parameterized and transaction-local, so a tenant context
+    // cannot leak to another pooled connection or request.
+    await tx.$executeRaw`SELECT set_config('app.current_tenant', ${tenantId}, true)`;
+    const environment = process.env["NODE_ENV"] === "test"
+      ? "test"
+      : process.env["NODE_ENV"] === "development" ? "development" : "production";
+    await tx.$executeRaw`SELECT set_config('app.environment', ${environment}, true)`;
+    return fn(tx);
   });
 }

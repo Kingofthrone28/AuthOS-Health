@@ -12,6 +12,7 @@ export async function reviewExtractedEvent(
 
   await apiFetch("/api/voice/webhooks/event-extraction/review", {
     tenantId: session.tenantId,
+    accessToken: session.accessToken,
     method:   "POST",
     body:     JSON.stringify({ extractedEventId, decision, reviewedBy: session.user.id }),
   });

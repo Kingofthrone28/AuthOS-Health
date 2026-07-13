@@ -129,24 +129,22 @@ async function main() {
     });
     console.log(`  created case: ${authCase.id} — ${c.service} (${c.status})`);
     cases.push(authCase);
-
-    // Seed tasks for open cases
-    if (["new", "docs_missing", "ready_to_submit", "pending_payer", "peer_review_needed", "more_info_requested", "appealed"].includes(c.status)) {
-      await db.task.createMany({
-        data: tasksForStatus(tid, authCase.id, c.status, userId),
-        skipDuplicates: true,
-      });
-    }
+    let linkedRequirementIds: string[] = [];
 
     // Seed requirements for docs_missing case
     if (c.status === "docs_missing") {
-      await db.authorizationRequirement.createMany({
-        data: [
-          { caseId: authCase.id, tenantId: tid, description: "Physician letter of medical necessity",    source: "crd", required: true, completed: false },
-          { caseId: authCase.id, tenantId: tid, description: "Recent imaging report (within 6 months)", source: "crd", required: true, completed: true,  completedBy: userId, completedAt: new Date() },
-          { caseId: authCase.id, tenantId: tid, description: "Prior conservative treatment records",    source: "dtr", required: true, completed: false },
-        ],
-      });
+      const [medicalNecessity, , priorTreatment] = await Promise.all([
+        db.authorizationRequirement.create({
+          data: { caseId: authCase.id, tenantId: tid, description: "Physician letter of medical necessity", source: "crd", required: true },
+        }),
+        db.authorizationRequirement.create({
+          data: { caseId: authCase.id, tenantId: tid, description: "Recent imaging report (within 6 months)", source: "crd", required: true, completed: true, completedBy: userId, completedAt: new Date() },
+        }),
+        db.authorizationRequirement.create({
+          data: { caseId: authCase.id, tenantId: tid, description: "Prior conservative treatment records", source: "dtr", required: true },
+        }),
+      ]);
+      linkedRequirementIds = [medicalNecessity.id, priorTreatment.id];
     }
 
     // Seed requirements for ready_to_submit case — all completed, ready to fire Submit button
@@ -195,13 +193,27 @@ async function main() {
 
     // Seed requirements for more_info_requested case (payer responded asking for additional docs)
     if (c.status === "more_info_requested") {
-      await db.authorizationRequirement.createMany({
-        data: [
-          { caseId: authCase.id, tenantId: tid, description: "Initial clinical assessment",              source: "crd",   required: true, completed: true,  completedBy: userId, completedAt: new Date() },
-          { caseId: authCase.id, tenantId: tid, description: "14-day sleep diary per payer request",    source: "manual", required: true, completed: false },
-          { caseId: authCase.id, tenantId: tid, description: "Epworth Sleepiness Scale documentation",  source: "manual", required: true, completed: false },
-        ],
-      });
+      const [, sleepDiary, epworthScale] = await Promise.all([
+        db.authorizationRequirement.create({
+          data: { caseId: authCase.id, tenantId: tid, description: "Initial clinical assessment", source: "crd", required: true, completed: true, completedBy: userId, completedAt: new Date() },
+        }),
+        db.authorizationRequirement.create({
+          data: { caseId: authCase.id, tenantId: tid, description: "14-day sleep diary per payer request", source: "manual", required: true },
+        }),
+        db.authorizationRequirement.create({
+          data: { caseId: authCase.id, tenantId: tid, description: "Epworth Sleepiness Scale documentation", source: "manual", required: true },
+        }),
+      ]);
+      linkedRequirementIds = [sleepDiary.id, epworthScale.id];
+    }
+
+    // Seed tasks after requirements so collection work has a stable relation.
+    if (["new", "docs_missing", "ready_to_submit", "pending_payer", "peer_review_needed", "more_info_requested", "appealed"].includes(c.status)) {
+      const tasks = tasksForStatus(tid, authCase.id, c.status, userId).map((task, index) => ({
+        ...task,
+        ...(linkedRequirementIds[index] ? { requirementId: linkedRequirementIds[index] } : {}),
+      }));
+      await db.task.createMany({ data: tasks, skipDuplicates: true });
     }
 
     // Seed a submission for submitted/approved/denied/more_info_requested cases

@@ -29,8 +29,7 @@ export function SubmitToPayerButton({ caseId, status }: SubmitToPayerButtonProps
     : `/api/cases/${encodeURIComponent(caseId)}/submit`;
 
   async function handleSubmit() {
-    const tenantId = session?.tenantId;
-    if (!tenantId) return;
+    if (!session?.accessToken) return;
 
     setLoading(true);
     setError(null);
@@ -38,9 +37,8 @@ export function SubmitToPayerButton({ caseId, status }: SubmitToPayerButtonProps
     try {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        "x-tenant-id": tenantId,
+        Authorization: `Bearer ${session.accessToken}`,
       };
-      if (session?.accessToken) headers["Authorization"] = `Bearer ${session.accessToken}`;
 
       const res = await fetch(`${API_URL}${endpoint}`, { method: "POST", headers });
 

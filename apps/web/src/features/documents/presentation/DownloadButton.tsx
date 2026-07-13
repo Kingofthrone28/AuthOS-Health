@@ -17,10 +17,11 @@ export function DownloadButton({ attachmentId, fileName, tenantId }: DownloadBut
   const [loading, setLoading] = useState(false);
 
   async function handleDownload() {
+    if (!session?.accessToken) return;
     setLoading(true);
     try {
-      const headers: Record<string, string> = { "x-tenant-id": tenantId };
-      if (session?.accessToken) headers["Authorization"] = `Bearer ${session.accessToken}`;
+      void tenantId;
+      const headers: Record<string, string> = { Authorization: `Bearer ${session.accessToken}` };
 
       const res = await fetch(`${API_URL}/api/documents/${attachmentId}/download`, { headers });
       if (!res.ok) throw new Error(`Download failed: ${res.status}`);

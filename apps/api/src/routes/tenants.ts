@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireRole } from "../middleware/requireRole.js";
 import { ctx } from "../lib/context.js";
+import { ApiError } from "../middleware/errorHandler.js";
 
 export const tenantsRouter = Router();
 
@@ -25,6 +26,7 @@ tenantsRouter.post("/", requireRole("admin"), async (req, res, next) => {
 
 tenantsRouter.get("/:id", requireRole("admin"), async (req, res, next) => {
   try {
+    assertTenantPath(req.params["id"], res.locals["tenantId"] as string);
     const tenant = await ctx.tenantService.getById(req.params["id"]!);
     if (!tenant) {
       res.status(404).json({ error: "Tenant not found" });
@@ -48,6 +50,7 @@ const updateSettingsSchema = z.object({
 
 tenantsRouter.patch("/:id/settings", requireRole("admin"), async (req, res, next) => {
   try {
+    assertTenantPath(req.params["id"], res.locals["tenantId"] as string);
     const body = updateSettingsSchema.parse(req.body);
     const actorId = res.locals["userId"] as string;
     const settings = await ctx.tenantService.updateSettings(req.params["id"]!, body, actorId);
@@ -59,6 +62,7 @@ tenantsRouter.patch("/:id/settings", requireRole("admin"), async (req, res, next
 
 tenantsRouter.get("/:id/users", requireRole("admin", "manager"), async (req, res, next) => {
   try {
+    assertTenantPath(req.params["id"], res.locals["tenantId"] as string);
     const users = await ctx.tenantService.listUsers(req.params["id"]!);
     res.json(users);
   } catch (err) {
@@ -75,6 +79,7 @@ const createUserSchema = z.object({
 
 tenantsRouter.post("/:id/users", requireRole("admin"), async (req, res, next) => {
   try {
+    assertTenantPath(req.params["id"], res.locals["tenantId"] as string);
     const body = createUserSchema.parse(req.body);
     const actorId = res.locals["userId"] as string;
     const user = await ctx.tenantService.createUser(req.params["id"]!, body, actorId);
@@ -83,3 +88,9 @@ tenantsRouter.post("/:id/users", requireRole("admin"), async (req, res, next) =>
     next(err);
   }
 });
+
+function assertTenantPath(pathTenantId: string | undefined, authenticatedTenantId: string): void {
+  if (!pathTenantId || pathTenantId !== authenticatedTenantId) {
+    throw new ApiError(403, "Tenant boundary violation");
+  }
+}

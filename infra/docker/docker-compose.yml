@@ -35,6 +35,9 @@ services:
       PORT: 3001
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/authos_health
       REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET before starting Docker Compose}
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?Set INTERNAL_SECRET before starting Docker Compose}
+      TENANT_ENCRYPTION_KEY: ${TENANT_ENCRYPTION_KEY:?Set TENANT_ENCRYPTION_KEY before starting Docker Compose}
       PAYER_URL: http://mock-payer:3006
     depends_on:
       postgres:
@@ -51,6 +54,7 @@ services:
     environment:
       PORT: 3002
       API_URL: http://api:3001
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?Set INTERNAL_SECRET before starting Docker Compose}
     depends_on:
       - api
 
@@ -66,6 +70,7 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/authos_health
       REDIS_URL: redis://redis:6379
       PAYER_URL: http://mock-payer:3006
+      INTERNAL_SECRET: ${INTERNAL_SECRET:?Set INTERNAL_SECRET before starting Docker Compose}
     depends_on:
       postgres:
         condition: service_healthy

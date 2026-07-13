@@ -94,10 +94,10 @@ model Tenant {
   slug      String   @unique
   createdAt DateTime @default(now())
 
-  users               User[]
-  cases               AuthorizationCase[]
-  auditEvents         AuditEvent[]
-  settings            TenantSettings?
+  users       User[]
+  cases       AuthorizationCase[]
+  auditEvents AuditEvent[]
+  settings    TenantSettings?
 }
 
 model TenantSettings {
@@ -113,7 +113,7 @@ model TenantSettings {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
-  tenant          Tenant       @relation(fields: [tenantId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 }
 
 model User {
@@ -125,24 +125,40 @@ model User {
   passwordHash String?
   createdAt    DateTime @default(now())
 
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  tenant        Tenant         @relation(fields: [tenantId], references: [id])
+  refreshTokens RefreshToken[]
 
   @@unique([tenantId, email])
   @@index([tenantId])
 }
 
+model RefreshToken {
+  id        String    @id @default(cuid())
+  tenantId  String
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId])
+  @@index([tenantId, expiresAt])
+}
+
 // ─── Healthcare reference entities ───────────────────────────────────────────
 
 model PatientRef {
-  id         String  @id @default(cuid())
-  tenantId   String
-  fhirId     String
-  mrn        String?
-  name       String
-  dob        String
-  gender     String?
+  id       String  @id @default(cuid())
+  tenantId String
+  fhirId   String
+  mrn      String?
+  name     String
+  dob      String
+  gender   String?
 
-  cases      AuthorizationCase[]
+  cases AuthorizationCase[]
 
   @@unique([tenantId, fhirId])
   @@index([tenantId])
@@ -159,7 +175,7 @@ model CoverageRef {
   memberId     String
   groupId      String?
 
-  cases        AuthorizationCase[]
+  cases AuthorizationCase[]
 
   @@unique([tenantId, fhirId])
   @@index([tenantId])
@@ -175,7 +191,7 @@ model OrderRef {
   orderingProviderRefId String?
   requestedAt           DateTime
 
-  cases                 AuthorizationCase[]
+  cases AuthorizationCase[]
 
   @@unique([tenantId, fhirId])
   @@index([tenantId])
@@ -184,36 +200,38 @@ model OrderRef {
 // ─── Workflow entities ────────────────────────────────────────────────────────
 
 model AuthorizationCase {
-  id              String       @id @default(cuid())
-  tenantId        String
-  patientRefId    String
-  coverageRefId   String
-  orderRefId      String?
-  serviceType     String
-  serviceCode     String?
-  priority        CasePriority @default(standard)
-  status          CaseStatus   @default(new)
-  payerName       String
-  payerCaseRef    String?
-  approvalNumber  String?
-  dueAt           DateTime?
-  createdBy       String
-  assignedTo      String?
-  escalatedAt     DateTime?
-  lastFollowUpAt  DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+  id             String       @id @default(cuid())
+  tenantId       String
+  patientRefId   String
+  coverageRefId  String
+  orderRefId     String?
+  serviceType    String
+  serviceCode    String?
+  priority       CasePriority @default(standard)
+  status         CaseStatus   @default(new)
+  payerName      String
+  payerCaseRef   String?
+  approvalNumber String?
+  dueAt          DateTime?
+  createdBy      String
+  assignedTo     String?
+  escalatedAt    DateTime?
+  slaWarningAt   DateTime?
+  lastFollowUpAt DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  version        Int          @default(0)
 
-  tenant        Tenant       @relation(fields: [tenantId], references: [id])
-  patient       PatientRef   @relation(fields: [patientRefId], references: [id])
-  coverage      CoverageRef  @relation(fields: [coverageRefId], references: [id])
-  order         OrderRef?    @relation(fields: [orderRefId], references: [id])
+  tenant   Tenant      @relation(fields: [tenantId], references: [id])
+  patient  PatientRef  @relation(fields: [patientRefId], references: [id])
+  coverage CoverageRef @relation(fields: [coverageRefId], references: [id])
+  order    OrderRef?   @relation(fields: [orderRefId], references: [id])
 
-  requirements  AuthorizationRequirement[]
-  submissions   Submission[]
-  tasks         Task[]
-  attachments   Attachment[]
-  transcripts   CallTranscript[]
+  requirements AuthorizationRequirement[]
+  submissions  Submission[]
+  tasks        Task[]
+  attachments  Attachment[]
+  transcripts  CallTranscript[]
 
   @@index([tenantId, status])
   @@index([tenantId, assignedTo])
@@ -231,7 +249,8 @@ model AuthorizationRequirement {
   completedBy String?
   source      RequirementSource @default(manual)
 
-  case        AuthorizationCase @relation(fields: [caseId], references: [id])
+  case  AuthorizationCase @relation(fields: [caseId], references: [id])
+  tasks Task[]
 
   @@index([caseId])
   @@index([tenantId])
@@ -249,56 +268,61 @@ model Submission {
   nextRetryAt DateTime?
   submittedAt DateTime           @default(now())
   submittedBy String
+  version     Int                @default(0)
 
-  case        AuthorizationCase  @relation(fields: [caseId], references: [id])
-  responses   PayerResponse[]
+  case      AuthorizationCase @relation(fields: [caseId], references: [id])
+  responses PayerResponse[]
 
   @@index([caseId])
   @@index([tenantId, status])
 }
 
 model PayerResponse {
-  id            String        @id @default(cuid())
-  submissionId  String
-  caseId        String
-  tenantId      String
-  decision      PayerDecision
-  denialReason  String?
-  denialCode    String?
-  authNumber    String?
+  id             String        @id @default(cuid())
+  submissionId   String
+  caseId         String
+  tenantId       String
+  decision       PayerDecision
+  denialReason   String?
+  denialCode     String?
+  authNumber     String?
   rawResponseRef String?
-  receivedAt    DateTime      @default(now())
+  receivedAt     DateTime      @default(now())
 
-  submission    Submission    @relation(fields: [submissionId], references: [id])
+  submission Submission @relation(fields: [submissionId], references: [id])
 
   @@index([caseId])
 }
 
 model Task {
-  id          String            @id @default(cuid())
-  caseId      String
-  tenantId    String
-  type        String
-  description String
-  status      String            @default("open")
-  assignedTo  String?
-  completedBy String?
-  completedAt DateTime?
-  dueAt       DateTime?
-  createdAt   DateTime          @default(now())
+  id            String    @id @default(cuid())
+  caseId        String
+  tenantId      String
+  requirementId String?
+  type          String
+  description   String
+  status        String    @default("open")
+  assignedTo    String?
+  completedBy   String?
+  completedAt   DateTime?
+  dueAt         DateTime?
+  createdAt     DateTime  @default(now())
+  version       Int       @default(0)
 
-  case        AuthorizationCase @relation(fields: [caseId], references: [id])
+  case        AuthorizationCase         @relation(fields: [caseId], references: [id])
+  requirement AuthorizationRequirement? @relation(fields: [requirementId], references: [id], onDelete: SetNull)
 
   @@index([caseId])
+  @@index([tenantId, requirementId])
   @@index([tenantId, assignedTo])
   @@index([tenantId, status])
 }
 
 model CallTranscript {
-  id              String            @id @default(cuid())
+  id              String               @id @default(cuid())
   caseId          String?
   tenantId        String
-  callSid         String            @unique
+  callSid         String               @unique
   direction       String
   status          CallTranscriptStatus @default(COMPLETED)
   startedAt       DateTime
@@ -327,25 +351,26 @@ model ExtractedEvent {
   reviewedAt   DateTime?
   extractedAt  DateTime           @default(now())
 
-  transcript   CallTranscript     @relation(fields: [transcriptId], references: [id])
+  transcript CallTranscript @relation(fields: [transcriptId], references: [id])
 
   @@index([caseId])
   @@index([tenantId, reviewStatus])
 }
 
 model Attachment {
-  id             String            @id @default(cuid())
+  id             String   @id @default(cuid())
   caseId         String
   tenantId       String
   fileName       String
   mimeType       String
   sizeBytes      Int
   storageRef     String
+  encrypted      Boolean  @default(false)
   classification String?
   uploadedBy     String
-  uploadedAt     DateTime          @default(now())
+  uploadedAt     DateTime @default(now())
 
-  case           AuthorizationCase @relation(fields: [caseId], references: [id])
+  case AuthorizationCase @relation(fields: [caseId], references: [id])
 
   @@index([caseId])
   @@index([tenantId])
@@ -365,7 +390,7 @@ model AuditEvent {
   metadata   Json?
   occurredAt DateTime @default(now())
 
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  tenant Tenant @relation(fields: [tenantId], references: [id])
 
   @@index([tenantId, entityId])
   @@index([tenantId, entityType])

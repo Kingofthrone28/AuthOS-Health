@@ -11,7 +11,6 @@ export async function GET() {
   const upstream = await fetch(`${API_URL}/api/voice/stream`, {
     headers: {
       Authorization: `Bearer ${session.accessToken}`,
-      "x-tenant-id": session.tenantId,
     },
     cache: "no-store",
   });

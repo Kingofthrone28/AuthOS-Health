@@ -20,8 +20,9 @@ tasksRouter.get("/", async (req, res, next) => {
 tasksRouter.post("/", async (req, res, next) => {
   try {
     const tenantId = res.locals["tenantId"] as string;
-    const { caseId, type, description, assignedTo, dueAt } = req.body as {
+    const { caseId, requirementId, type, description, assignedTo, dueAt } = req.body as {
       caseId: string;
+      requirementId?: string;
       type: string;
       description: string;
       assignedTo?: string;
@@ -30,7 +31,14 @@ tasksRouter.post("/", async (req, res, next) => {
 
     const task = await ctx.taskService.createTask(
       tenantId,
-      { caseId, type, description, assignedTo, dueAt: dueAt ? new Date(dueAt) : undefined },
+      {
+        caseId,
+        requirementId,
+        type,
+        description,
+        assignedTo,
+        dueAt: dueAt ? new Date(dueAt) : undefined,
+      },
       (res.locals["userId"] as string) ?? "system"
     );
     res.status(201).json(task);

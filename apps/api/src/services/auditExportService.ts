@@ -1,5 +1,6 @@
 import { type PrismaClient } from "@prisma/client";
 import { Readable } from "node:stream";
+import { withTenant } from "../lib/prisma.js";
 
 export interface AuditQueryFilters {
   tenantId: string;
@@ -31,12 +32,12 @@ export class AuditExportService {
     const where = this.buildWhere(filters);
     const limit = Math.min(filters.limit ?? 50, 200);
 
-    const events = await this.db.auditEvent.findMany({
+    const events = await withTenant(this.db, filters.tenantId, (tx) => tx.auditEvent.findMany({
       where,
       orderBy: { occurredAt: "desc" },
       take: limit + 1,
       ...(filters.cursor ? { cursor: { id: filters.cursor }, skip: 1 } : {}),
-    });
+    }));
 
     const hasMore = events.length > limit;
     const items = hasMore ? events.slice(0, limit) : events;
@@ -68,12 +69,12 @@ export class AuditExportService {
           }
 
           const where = buildWhere(filters);
-          const rows: AuditRow[] = await db.auditEvent.findMany({
+          const rows: AuditRow[] = await withTenant(db, filters.tenantId, (tx) => tx.auditEvent.findMany({
             where,
             orderBy: { occurredAt: "desc" },
             take: BATCH_SIZE + 1,
             ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-          });
+          }));
 
           const hasMore = rows.length > BATCH_SIZE;
           const batch = hasMore ? rows.slice(0, BATCH_SIZE) : rows;
@@ -128,12 +129,12 @@ export class AuditExportService {
 
         try {
           const where = buildWhere(filters);
-          const rows: AuditRow[] = await db.auditEvent.findMany({
+          const rows: AuditRow[] = await withTenant(db, filters.tenantId, (tx) => tx.auditEvent.findMany({
             where,
             orderBy: { occurredAt: "desc" },
             take: BATCH_SIZE + 1,
             ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-          });
+          }));
 
           const hasMore = rows.length > BATCH_SIZE;
           const batch = hasMore ? rows.slice(0, BATCH_SIZE) : rows;

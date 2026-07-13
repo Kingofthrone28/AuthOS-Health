@@ -55,6 +55,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "authos.fullname" . }}-secrets
                   key: INTERNAL_SECRET
+            - name: TENANT_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "authos.fullname" . }}-secrets
+                  key: TENANT_ENCRYPTION_KEY
           envFrom:
             - configMapRef:
                 name: {{ include "authos.fullname" . }}-config

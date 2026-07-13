@@ -13,22 +13,23 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@authos/shared-types": "*",
-    "@authos/domain": "*",
     "@authos/audit": "*",
+    "@authos/domain": "*",
     "@authos/payer-adapters": "*",
+    "@authos/shared-types": "*",
     "@prisma/client": "^6.19.3",
+    "bullmq": "^5.79.3",
     "express": "^4.19.0",
     "prisma": "^6.19.3",
     "zod": "^3.23.0"
   },
   "devDependencies": {
-    "typescript": "*",
     "@types/express": "^4.17.0",
-    "@types/node": "*",
     "@types/jest": "^29.0.0",
+    "@types/node": "*",
     "jest": "^29.0.0",
     "ts-jest": "^29.0.0",
-    "tsx": "^4.0.0"
+    "tsx": "^4.0.0",
+    "typescript": "*"
   }
 }

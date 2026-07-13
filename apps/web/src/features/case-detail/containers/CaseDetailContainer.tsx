@@ -15,6 +15,7 @@ export async function CaseDetailContainer({ caseId }: CaseDetailContainerProps) 
   try {
     const raw = await apiFetch<CaseDetailApiResponse>(`/api/cases/${caseId}`, {
       tenantId: session.tenantId,
+      accessToken: session.accessToken,
     });
     caseDetail = toCaseDetailViewModel(raw);
   } catch {

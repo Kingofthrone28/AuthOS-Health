@@ -1,7 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
-import { DomainEvents, assertValidTransition } from "@authos/domain";
-import type { AuthorizationCaseStatus } from "@authos/shared-types";
-import type { AuditService } from "./auditService.js";
+import { DomainEvents } from "@authos/domain";
+import { AuditService } from "./auditService.js";
+import { withTenant } from "../lib/prisma.js";
+import { completeRequirementInTransaction } from "./requirementsService.js";
+import { decryptTenantBuffer, encryptTenantBuffer } from "../lib/tenantEncryption.js";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 
@@ -31,6 +33,7 @@ export interface UploadAttachmentInput {
   sizeBytes:    number;
   buffer:       Buffer;
   uploadedBy:   string;
+  requirementId?: string | undefined;
 }
 
 export class AttachmentService {
@@ -43,106 +46,102 @@ export class AttachmentService {
     // Ensure upload dir exists
     await fs.mkdir(UPLOAD_DIR, { recursive: true });
 
-    const storageRef = path.join(UPLOAD_DIR, `${Date.now()}-${input.fileName}`);
-    await fs.writeFile(storageRef, input.buffer);
+    const safeFileName = path.basename(input.fileName).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const storageRef = path.join(UPLOAD_DIR, `${Date.now()}-${safeFileName}.enc`);
+    const encryptedBuffer = encryptTenantBuffer(tenantId, input.buffer);
+    await fs.writeFile(storageRef, encryptedBuffer);
 
     const classification = classifyByFilename(input.fileName);
 
-    const attachment = await this.db.attachment.create({
-      data: {
-        caseId,
-        tenantId,
-        fileName:       input.fileName,
-        mimeType:       input.mimeType,
-        sizeBytes:      input.sizeBytes,
-        storageRef,
-        classification,
-        uploadedBy:     input.uploadedBy,
-      },
-    });
-
-    await this.audit.emit({
-      tenantId,
-      entityType: "Attachment",
-      entityId:   attachment.id,
-      action:     DomainEvents.ATTACHMENT_UPLOADED,
-      actorId:    input.uploadedBy,
-      after:      { fileName: input.fileName, classification },
-    });
-
-    // Auto-advance case status when a document is uploaded:
-    //   docs_missing        → ready_to_submit  (docs gap now filled)
-    //   requirements_found  → docs_missing     (acknowledge that docs are now being collected)
-    const theCase = await this.db.authorizationCase.findFirst({
-      where: { id: caseId, tenantId },
-      select: { status: true },
-    });
-    if (theCase) {
-      const current = theCase.status as AuthorizationCaseStatus;
-      const next: AuthorizationCaseStatus | null =
-        current === "docs_missing"       ? "ready_to_submit" :
-        current === "requirements_found" ? "docs_missing"    :
-        null;
-
-      if (next) {
-        try {
-          assertValidTransition(current, next);
-          await this.db.authorizationCase.update({
-            where: { id: caseId },
-            data:  { status: next },
-          });
-          await this.audit.emit({
+    try {
+      return await withTenant(this.db, tenantId, async (tx) => {
+        const attachment = await tx.attachment.create({
+          data: {
+            caseId,
             tenantId,
-            entityType: "AuthorizationCase",
-            entityId:   caseId,
-            action:     DomainEvents.CASE_STATUS_CHANGED,
-            actorId:    input.uploadedBy,
-            before:     { status: current },
-            after:      { status: next },
-          });
-        } catch {
-          // Transition already disallowed by state machine — leave status as-is
-        }
-      }
-    }
+            fileName: input.fileName,
+            mimeType: input.mimeType,
+            sizeBytes: input.sizeBytes,
+            storageRef,
+            encrypted: true,
+            classification,
+            uploadedBy: input.uploadedBy,
+          },
+        });
 
-    return attachment;
+        const audit = new AuditService(tx);
+        await audit.emit({
+          tenantId,
+          entityType: "Attachment",
+          entityId: attachment.id,
+          action: DomainEvents.ATTACHMENT_UPLOADED,
+          actorId: input.uploadedBy,
+          after: { fileName: input.fileName, classification },
+        });
+
+        if (input.requirementId) {
+          await completeRequirementInTransaction(
+            tx,
+            tenantId,
+            caseId,
+            input.requirementId,
+            input.uploadedBy,
+          );
+        }
+
+        return attachment;
+      });
+    } catch (error) {
+      await fs.unlink(storageRef).catch(() => undefined);
+      throw error;
+    }
   }
 
   async getAttachment(tenantId: string, attachmentId: string) {
-    return this.db.attachment.findFirst({
+    return withTenant(this.db, tenantId, (tx) => tx.attachment.findFirst({
       where: { id: attachmentId, tenantId },
-    });
+    }));
+  }
+
+  async readAttachment(tenantId: string, attachmentId: string) {
+    const attachment = await this.getAttachment(tenantId, attachmentId);
+    if (!attachment) return null;
+    const stored = await fs.readFile(attachment.storageRef);
+    return {
+      attachment,
+      content: attachment.encrypted ? decryptTenantBuffer(tenantId, stored) : stored,
+    };
   }
 
   async listAttachments(tenantId: string, caseId: string) {
-    return this.db.attachment.findMany({
+    return withTenant(this.db, tenantId, (tx) => tx.attachment.findMany({
       where:   { caseId, tenantId },
       orderBy: { uploadedAt: "desc" },
-    });
+    }));
   }
 
   async listAllForTenant(tenantId: string) {
-    return this.db.attachment.findMany({
+    return withTenant(this.db, tenantId, (tx) => tx.attachment.findMany({
       where:   { tenantId },
       include: { case: { select: { id: true, serviceType: true, patientRefId: true } } },
       orderBy: { uploadedAt: "desc" },
-    });
+    }));
   }
 
   async classifyAttachment(tenantId: string, attachmentId: string) {
-    const attachment = await this.db.attachment.findFirstOrThrow({
+    return withTenant(this.db, tenantId, async (tx) => {
+    const attachment = await tx.attachment.findFirstOrThrow({
       where: { id: attachmentId, tenantId },
     });
 
     const classification = classifyByFilename(attachment.fileName);
 
-    const updated = await this.db.attachment.update({
+    const updated = await tx.attachment.update({
       where: { id: attachmentId },
       data:  { classification },
     });
 
-    await this.audit.emit({
+    await new AuditService(tx).emit({
       tenantId,
       entityType: "Attachment",
       entityId:   attachmentId,
@@ -151,5 +150,6 @@ export class AttachmentService {
     });
 
     return updated;
+    });
   }
 }

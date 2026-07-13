@@ -9,6 +9,7 @@ import type {
   FhirCoverage,
   FhirServiceRequest,
 } from "@authos/fhir-adapters";
+import { withTenant } from "../lib/prisma.js";
 
 interface FhirBundle<T> {
   entry?: Array<{ resource: T }>;
@@ -40,6 +41,7 @@ export class EhrService {
     const fhirCoverage = ((coverageRes as FhirBundle<FhirCoverage>).entry?.[0]?.resource) ?? null;
     const fhirOrder    = ((orderRes as FhirBundle<FhirServiceRequest>).entry?.[0]?.resource) ?? null;
 
+    return withTenant(this.db, tenantId, async (tx) => {
     // Upsert PatientRef by tenantId + fhirId
     const mappedPatient = mapFhirPatient(fhirPatient, tenantId);
     const patientData = {
@@ -50,7 +52,7 @@ export class EhrService {
       gender:    mappedPatient.gender   ?? null,
       mrn:       mappedPatient.mrn      ?? null,
     };
-    const patientRef  = await this.db.patientRef.upsert({
+    const patientRef  = await tx.patientRef.upsert({
       where:  { tenantId_fhirId: { tenantId, fhirId: fhirPatient.id } },
       update: patientData,
       create: patientData,
@@ -70,16 +72,16 @@ export class EhrService {
         memberId:    mapped.memberId,
         groupId:     mapped.groupId   ?? null,
       };
-      const existingCoverage = await this.db.coverageRef.findFirst({
+      const existingCoverage = await tx.coverageRef.findFirst({
         where: { tenantId, fhirId: fhirCoverage.id },
       });
 
       const coverageRef = existingCoverage
-        ? await this.db.coverageRef.update({
+        ? await tx.coverageRef.update({
             where: { id: existingCoverage.id },
             data:  coverageData,
           })
-        : await this.db.coverageRef.create({ data: coverageData });
+        : await tx.coverageRef.create({ data: coverageData });
 
       coverageRefId = coverageRef.id;
     }
@@ -97,7 +99,7 @@ export class EhrService {
         orderingProviderRefId: mapped.orderingProviderRefId ?? null,
         requestedAt:          mapped.requestedAt,
       };
-      const orderRef = await this.db.orderRef.upsert({
+      const orderRef = await tx.orderRef.upsert({
         where:  { tenantId_fhirId: { tenantId, fhirId: fhirOrder.id } },
         update: orderData,
         create: orderData,
@@ -107,10 +109,11 @@ export class EhrService {
 
     // Reload for return so callers have the full records
     const [orderRef, coverageRef] = await Promise.all([
-      orderRefId    ? this.db.orderRef.findUnique({ where: { id: orderRefId } })       : Promise.resolve(null),
-      coverageRefId ? this.db.coverageRef.findUnique({ where: { id: coverageRefId } }) : Promise.resolve(null),
+      orderRefId    ? tx.orderRef.findUnique({ where: { id: orderRefId } })       : Promise.resolve(null),
+      coverageRefId ? tx.coverageRef.findUnique({ where: { id: coverageRefId } }) : Promise.resolve(null),
     ]);
 
     return { patientRef, coverageRefId, orderRefId, orderRef, coverageRef };
+    });
   }
 }

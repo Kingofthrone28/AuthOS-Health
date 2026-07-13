@@ -18,10 +18,19 @@ async function handleSmartLaunch(
       return;
     }
 
-    // Phase 3: exchange launch token for real SMART access token via PKCE.
-    // For Phase 2, accept the mock FHIR server with a placeholder token.
+    if (process.env["NODE_ENV"] === "production" || process.env["SMART_ALLOW_MOCK_LAUNCH"] !== "true") {
+      res.status(501).json({ error: "SMART launch is not enabled for this deployment" });
+      return;
+    }
+
+    // Mock launch is development-only. Production must map a verified SMART
+    // issuer and launch token to a tenant before fetching any FHIR data.
     const accessToken = "mock-token";
-    const tenantId    = "default";
+    const tenantId = process.env["SMART_DEFAULT_TENANT_ID"];
+    if (!tenantId) {
+      res.status(503).json({ error: "SMART mock tenant is not configured" });
+      return;
+    }
 
     const { patientRef, coverageRefId, orderRefId, orderRef, coverageRef } =
       await ctx.ehrService.fetchAndSyncContext(tenantId, iss, accessToken, patient);

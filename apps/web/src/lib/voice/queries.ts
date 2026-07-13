@@ -30,14 +30,14 @@ export interface PendingEventItem {
   extractedAt:  string;
 }
 
-export async function fetchVoiceStats(tenantId: string): Promise<VoiceStats> {
-  return apiFetch<VoiceStats>("/api/voice/stats", { tenantId });
+export async function fetchVoiceStats(tenantId: string, accessToken: string): Promise<VoiceStats> {
+  return apiFetch<VoiceStats>("/api/voice/stats", { tenantId, accessToken });
 }
 
-export async function fetchTranscripts(tenantId: string): Promise<TranscriptListItem[]> {
-  return apiFetch<TranscriptListItem[]>("/api/voice/transcripts", { tenantId });
+export async function fetchTranscripts(tenantId: string, accessToken: string): Promise<TranscriptListItem[]> {
+  return apiFetch<TranscriptListItem[]>("/api/voice/transcripts", { tenantId, accessToken });
 }
 
-export async function fetchPendingEvents(tenantId: string): Promise<PendingEventItem[]> {
-  return apiFetch<PendingEventItem[]>("/api/voice/events/pending", { tenantId });
+export async function fetchPendingEvents(tenantId: string, accessToken: string): Promise<PendingEventItem[]> {
+  return apiFetch<PendingEventItem[]>("/api/voice/events/pending", { tenantId, accessToken });
 }

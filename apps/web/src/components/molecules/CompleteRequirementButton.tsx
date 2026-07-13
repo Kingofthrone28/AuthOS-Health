@@ -19,13 +19,11 @@ export function CompleteRequirementButton({ caseId, reqId }: CompleteRequirement
   const [done, setDone] = useState(false);
 
   async function handleComplete() {
-    const tenantId = session?.tenantId;
-    if (!tenantId) return;
+    if (!session?.accessToken) return;
 
     setLoading(true);
     try {
-      const headers: Record<string, string> = { "x-tenant-id": tenantId };
-      if (session?.accessToken) headers["Authorization"] = `Bearer ${session.accessToken}`;
+      const headers: Record<string, string> = { Authorization: `Bearer ${session.accessToken}` };
 
       const res = await fetch(
         `${API_URL}/api/cases/${encodeURIComponent(caseId)}/requirements/${encodeURIComponent(reqId)}/complete`,

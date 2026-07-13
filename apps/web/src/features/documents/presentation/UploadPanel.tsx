@@ -54,9 +54,8 @@ export function UploadPanel() {
       setError("A case ID is required to upload a document.");
       return;
     }
-    const tenantId = session?.tenantId ?? window.sessionStorage.getItem("tenantId")?.trim();
-    if (!tenantId) {
-      setError("A tenant is required to upload a document.");
+    if (!session?.accessToken) {
+      setError("Your session has expired.");
       return;
     }
     setUploading(true);
@@ -65,11 +64,8 @@ export function UploadPanel() {
       const buffer = await selected.file.arrayBuffer();
       const headers: Record<string, string> = {
         "Content-Type": "application/octet-stream",
-        "x-tenant-id":  tenantId,
+        Authorization: `Bearer ${session.accessToken}`,
       };
-      if (session?.accessToken) {
-        headers["Authorization"] = `Bearer ${session.accessToken}`;
-      }
       const res = await fetch(
         `${API_URL}/api/cases/${encodeURIComponent(caseId.trim())}/attachments?fileName=${encodeURIComponent(selected.file.name)}&mimeType=${encodeURIComponent(selected.file.type)}`,
         {

@@ -5,6 +5,16 @@ import { extractionService } from "./extractionService.js";
 
 const API_URL = process.env["API_URL"] ?? "http://localhost:3001";
 
+function internalHeaders(tenantId: string): Record<string, string> {
+  const internalSecret = process.env["INTERNAL_SECRET"];
+  if (!internalSecret) throw new Error("INTERNAL_SECRET must be configured for voice API calls");
+  return {
+    "Content-Type": "application/json",
+    "x-internal-secret": internalSecret,
+    "x-tenant-id": tenantId,
+  };
+}
+
 export interface CompletedTranscriptPayload {
   callSid:          string;
   tenantId:         string;
@@ -27,10 +37,7 @@ export async function processCompletedTranscript(
   // 1. Persist the completed transcript; API returns a transcriptId
   const transcriptRes = await fetch(`${API_URL}/api/voice/webhooks/transcript`, {
     method:  "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-tenant-id":  payload.tenantId,
-    },
+    headers: internalHeaders(payload.tenantId),
     body: JSON.stringify(payload),
   });
 
@@ -60,10 +67,7 @@ export async function processCompletedTranscript(
   if (events.length > 0) {
     await fetch(`${API_URL}/api/voice/webhooks/event-extraction`, {
       method:  "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-tenant-id":  payload.tenantId,
-      },
+      headers: internalHeaders(payload.tenantId),
       body: JSON.stringify({
         transcriptId,
         caseId:   payload.caseId,
@@ -85,10 +89,7 @@ export async function publishLiveTranscriptUpdate(payload: {
 }): Promise<void> {
   const res = await fetch(`${API_URL}/api/voice/webhooks/transcript/live`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-tenant-id":  payload.tenantId,
-    },
+    headers: internalHeaders(payload.tenantId),
     body: JSON.stringify({
       callSid:        payload.callSid,
       ...(payload.caseId !== undefined ? { caseId: payload.caseId } : {}),

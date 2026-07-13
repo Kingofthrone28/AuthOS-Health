@@ -37,21 +37,20 @@ export function CaseUploadButton({ caseId, reqId }: CaseUploadButtonProps) {
       return;
     }
 
-    const tenantId = session?.tenantId;
-    if (!tenantId) { setError("Session expired."); return; }
+    if (!session?.accessToken) { setError("Session expired."); return; }
 
     setUploading(true);
     setError(null);
 
     try {
-      const headers: Record<string, string> = { "x-tenant-id": tenantId };
-      if (session?.accessToken) headers["Authorization"] = `Bearer ${session.accessToken}`;
+      const headers: Record<string, string> = { Authorization: `Bearer ${session.accessToken}` };
 
       // Upload all selected files in sequence
       for (const file of files) {
         const res = await fetch(
           `${API_URL}/api/cases/${encodeURIComponent(caseId)}/attachments` +
-          `?fileName=${encodeURIComponent(file.name)}&mimeType=${encodeURIComponent(file.type)}`,
+          `?fileName=${encodeURIComponent(file.name)}&mimeType=${encodeURIComponent(file.type)}` +
+          (reqId ? `&requirementId=${encodeURIComponent(reqId)}` : ""),
           {
             method: "POST",
             headers: { ...headers, "Content-Type": "application/octet-stream" },
@@ -59,15 +58,6 @@ export function CaseUploadButton({ caseId, reqId }: CaseUploadButtonProps) {
           }
         );
         if (!res.ok) throw new Error(`Upload failed for "${file.name}" (${res.status})`);
-      }
-
-      // Auto-complete the linked requirement once all uploads succeed
-      if (reqId) {
-        const res = await fetch(
-          `${API_URL}/api/cases/${encodeURIComponent(caseId)}/requirements/${encodeURIComponent(reqId)}/complete`,
-          { method: "POST", headers }
-        );
-        if (!res.ok) throw new Error(`Could not mark requirement complete (${res.status})`);
       }
 
       router.refresh();

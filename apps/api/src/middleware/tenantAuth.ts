@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import { timingSafeEqual } from "node:crypto";
 import jwt from "jsonwebtoken";
 import type ms from "ms";
 import jwksClient from "jwks-rsa";
@@ -10,7 +11,41 @@ export interface TokenClaims {
   email?: string;
 }
 
-const JWT_SECRET = process.env["JWT_SECRET"] ?? "change_me";
+function getJwtSecret(): string {
+  const secret = process.env["JWT_SECRET"];
+  if (!secret) throw new Error("JWT_SECRET must be configured");
+  if (process.env["NODE_ENV"] === "production" && secret.length < 32) {
+    throw new Error("JWT_SECRET must be at least 32 characters in production");
+  }
+  return secret;
+}
+
+function secretsMatch(candidate: string | undefined, expected: string | undefined): boolean {
+  if (!candidate || !expected) return false;
+  const candidateBuffer = Buffer.from(candidate);
+  const expectedBuffer = Buffer.from(expected);
+  return candidateBuffer.length === expectedBuffer.length &&
+    timingSafeEqual(candidateBuffer, expectedBuffer);
+}
+
+function parseClaims(value: string | jwt.JwtPayload): TokenClaims {
+  if (typeof value !== "object" ||
+      typeof value.sub !== "string" ||
+      typeof value.tenantId !== "string" ||
+      typeof value.role !== "string" ||
+      value.sub.length === 0 ||
+      value.tenantId.length === 0 ||
+      value.role.length === 0) {
+    throw new Error("Token is missing required claims");
+  }
+
+  return {
+    sub: value.sub,
+    tenantId: value.tenantId,
+    role: value.role,
+    ...(typeof value.email === "string" ? { email: value.email } : {}),
+  };
+}
 
 const jwksClients = new Map<string, jwksClient.JwksClient>();
 
@@ -40,25 +75,23 @@ async function verifyJwt(token: string, jwksUri?: string): Promise<TokenClaims> 
     const kid = decoded.header.kid;
     if (!kid) throw new Error("Token missing kid header");
     const publicKey = await getSigningKey(jwksUri, kid);
-    return jwt.verify(token, publicKey, { algorithms: ["RS256"] }) as TokenClaims;
+    return parseClaims(jwt.verify(token, publicKey, { algorithms: ["RS256"] }));
   }
-  return jwt.verify(token, JWT_SECRET) as TokenClaims;
+  return parseClaims(jwt.verify(token, getJwtSecret(), { algorithms: ["HS256"] }));
 }
 
 /**
  * Tenant-aware auth middleware.
  *
- * Supports two modes:
+ * Supports two authenticated modes:
  * 1. Bearer JWT — extracts tenantId/userId/role from token claims
- * 2. Legacy x-tenant-id header — allows internal/worker calls with a shared secret
- *
- * Internal callers (workers) may pass x-internal-secret to bypass JWT.
+ * 2. Internal callers — require the shared secret and an explicit tenant context
  */
 export function tenantAuth(req: Request, res: Response, next: NextFunction): void {
   const authHeader = req.headers["authorization"];
   const internalSecret = req.headers["x-internal-secret"];
 
-  if (internalSecret && internalSecret === process.env["INTERNAL_SECRET"]) {
+  if (typeof internalSecret === "string" && secretsMatch(internalSecret, process.env["INTERNAL_SECRET"])) {
     const tenantId = req.headers["x-tenant-id"];
     if (!tenantId || typeof tenantId !== "string") {
       res.status(401).json({ error: "Missing tenant context on internal call" });
@@ -72,14 +105,6 @@ export function tenantAuth(req: Request, res: Response, next: NextFunction): voi
   }
 
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    const tenantId = req.headers["x-tenant-id"];
-    if (tenantId && typeof tenantId === "string") {
-      res.locals["tenantId"] = tenantId;
-      res.locals["userId"] = "system";
-      res.locals["userRole"] = "admin";
-      next();
-      return;
-    }
     res.status(401).json({ error: "Missing authorization" });
     return;
   }
@@ -99,5 +124,16 @@ export function tenantAuth(req: Request, res: Response, next: NextFunction): voi
 }
 
 export function signJwt(claims: TokenClaims, expiresIn: ms.StringValue = "8h"): string {
-  return jwt.sign(claims, JWT_SECRET, { expiresIn });
+  return jwt.sign(claims, getJwtSecret(), { algorithm: "HS256", expiresIn });
+}
+
+export function validateSecurityConfiguration(): void {
+  if (process.env["NODE_ENV"] !== "production") return;
+  getJwtSecret();
+  if (!process.env["INTERNAL_SECRET"] || process.env["INTERNAL_SECRET"]!.length < 32) {
+    throw new Error("INTERNAL_SECRET must be at least 32 characters in production");
+  }
+  if (!process.env["TENANT_ENCRYPTION_KEY"] || process.env["TENANT_ENCRYPTION_KEY"]!.length < 32) {
+    throw new Error("TENANT_ENCRYPTION_KEY must be at least 32 characters in production");
+  }
 }

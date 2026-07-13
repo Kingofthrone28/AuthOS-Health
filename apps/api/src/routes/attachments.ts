@@ -11,7 +11,11 @@ export const attachmentsRouter = Router();
 attachmentsRouter.post("/:id/attachments", async (req, res, next) => {
   try {
     const tenantId = res.locals["tenantId"] as string;
-    const { fileName, mimeType } = req.query as { fileName?: string; mimeType?: string };
+    const { fileName, mimeType, requirementId } = req.query as {
+      fileName?: string;
+      mimeType?: string;
+      requirementId?: string;
+    };
     if (!fileName) throw new ApiError(400, "fileName query param is required");
 
     const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body));
@@ -22,6 +26,7 @@ attachmentsRouter.post("/:id/attachments", async (req, res, next) => {
       sizeBytes:  buffer.length,
       buffer,
       uploadedBy: res.locals["userId"] as string ?? "system",
+      requirementId,
     });
 
     res.status(201).json(attachment);

@@ -13,10 +13,12 @@ import { authRouter } from "./routes/auth.js";
 import { tenantsRouter } from "./routes/tenants.js";
 import { auditRouter } from "./routes/audit.js";
 import { errorHandler } from "./middleware/errorHandler.js";
-import { tenantAuth } from "./middleware/tenantAuth.js";
+import { tenantAuth, validateSecurityConfiguration } from "./middleware/tenantAuth.js";
 import { getPrismaClient } from "./lib/prisma.js";
 
 const app = express();
+
+validateSecurityConfiguration();
 
 const ALLOWED_ORIGINS = (process.env["CORS_ORIGINS"] ?? "http://localhost:3000").split(",");
 

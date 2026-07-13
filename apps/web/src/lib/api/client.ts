@@ -8,15 +8,14 @@ export async function apiFetch<T>(
   options?: RequestInit & { tenantId: string; accessToken?: string }
 ): Promise<T> {
   const { tenantId, accessToken, ...fetchOptions } = options ?? { tenantId: "" };
-
-  const authHeader = accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+  void tenantId;
+  if (!accessToken) throw new Error("Authenticated API access token is required");
 
   const res = await fetch(`${API_BASE}${path}`, {
     ...fetchOptions,
     headers: {
       "Content-Type": "application/json",
-      "x-tenant-id": tenantId,
-      ...authHeader,
+      Authorization: `Bearer ${accessToken}`,
       ...fetchOptions.headers,
     },
     cache: "no-store", // dashboard data is always fresh

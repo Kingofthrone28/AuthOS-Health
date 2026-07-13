@@ -18,8 +18,7 @@ export function CheckRequirementsButton({ caseId }: CheckRequirementsButtonProps
   const [error, setError] = useState<string | null>(null);
 
   async function handleCheck() {
-    const tenantId = session?.tenantId;
-    if (!tenantId) return;
+    if (!session?.accessToken) return;
 
     setLoading(true);
     setError(null);
@@ -27,9 +26,8 @@ export function CheckRequirementsButton({ caseId }: CheckRequirementsButtonProps
     try {
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
-        "x-tenant-id": tenantId,
+        Authorization: `Bearer ${session.accessToken}`,
       };
-      if (session?.accessToken) headers["Authorization"] = `Bearer ${session.accessToken}`;
 
       const res = await fetch(
         `${API_URL}/api/cases/${encodeURIComponent(caseId)}/check-requirements`,

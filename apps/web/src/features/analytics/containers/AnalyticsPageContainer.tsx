@@ -8,10 +8,10 @@ export async function AnalyticsPageContainer() {
   const tenantId = session.tenantId;
 
   const [turnaround, denials, payers, staff] = await Promise.all([
-    apiFetch<TurnaroundData>("/api/analytics/turnaround", { tenantId }),
-    apiFetch<DenialData>("/api/analytics/denials", { tenantId }),
-    apiFetch<PayerData>("/api/analytics/payers", { tenantId }),
-    apiFetch<StaffData>("/api/analytics/staff", { tenantId }),
+    apiFetch<TurnaroundData>("/api/analytics/turnaround", { tenantId, accessToken: session.accessToken }),
+    apiFetch<DenialData>("/api/analytics/denials", { tenantId, accessToken: session.accessToken }),
+    apiFetch<PayerData>("/api/analytics/payers", { tenantId, accessToken: session.accessToken }),
+    apiFetch<StaffData>("/api/analytics/staff", { tenantId, accessToken: session.accessToken }),
   ]);
 
   return (

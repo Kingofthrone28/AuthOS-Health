@@ -90,6 +90,7 @@ export async function CasesTable({ filters }: CasesTableProps) {
   try {
     const raw = await apiFetch<ApiCase[]>(path, {
       tenantId: session.tenantId,
+      accessToken: session.accessToken,
     });
     rows = raw.map(toRow);
   } catch {

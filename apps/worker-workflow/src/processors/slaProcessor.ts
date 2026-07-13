@@ -1,69 +1,73 @@
 import { isBreached, isNearingBreach, DomainEvents } from "@authos/domain";
-import { getPrismaClient } from "../lib/prisma.js";
-import { apiPost } from "../lib/apiClient.js";
+import { withTenant } from "../lib/prisma.js";
 
 const TERMINAL_STATUSES = ["approved", "denied", "closed"];
 
 export const slaProcessor = {
-  async run(): Promise<{ breached: number; warning: number }> {
-    const db = getPrismaClient();
+  async run(tenantId: string): Promise<{ breached: number; warning: number }> {
     let breachedCount = 0;
     let warningCount = 0;
 
-    const activeCases = await db.authorizationCase.findMany({
+    const activeCases = await withTenant(tenantId, (tx) => tx.authorizationCase.findMany({
       where: {
+        tenantId,
         status: { notIn: TERMINAL_STATUSES as never },
         dueAt: { not: null },
+        OR: [{ escalatedAt: null }, { slaWarningAt: null }],
       },
-      select: { id: true, tenantId: true, dueAt: true, status: true },
-    });
+      select: { id: true, tenantId: true, dueAt: true, status: true, version: true, escalatedAt: true, slaWarningAt: true },
+    }));
 
-    for (const c of activeCases) {
-      if (!c.dueAt) continue;
+    for (const current of activeCases) {
+      if (!current.dueAt) continue;
+      const dueAt = current.dueAt;
+      const breached = isBreached(dueAt);
+      const warning = !breached && isNearingBreach(dueAt);
+      if (!breached && !warning) continue;
 
-      if (isBreached(c.dueAt)) {
-        breachedCount++;
-
-        await db.auditEvent.create({
+      const updated = await withTenant(tenantId, async (tx) => {
+        const result = await tx.authorizationCase.updateMany({
+          where: {
+            id: current.id,
+            tenantId,
+            version: current.version,
+            ...(breached ? { escalatedAt: null } : { slaWarningAt: null }),
+          },
           data: {
-            tenantId: c.tenantId,
+            version: { increment: 1 },
+            ...(breached ? { escalatedAt: new Date() } : { slaWarningAt: new Date() }),
+          },
+        });
+        if (result.count !== 1) return false;
+
+        await tx.auditEvent.create({
+          data: {
+            tenantId,
             entityType: "AuthorizationCase",
-            entityId: c.id,
-            action: DomainEvents.SLA_BREACHED,
-            after: { dueAt: c.dueAt.toISOString(), status: c.status },
+            entityId: current.id,
+            action: breached ? DomainEvents.SLA_BREACHED : DomainEvents.SLA_BREACH_WARNING,
+            after: { dueAt: dueAt.toISOString(), status: current.status },
           },
         });
 
-        await db.authorizationCase.update({
-          where: { id: c.id },
-          data: { escalatedAt: new Date() },
-        });
-
-        try {
-          await apiPost("/api/tasks", c.tenantId, {
-            caseId: c.id,
-            type: "sla_breach",
-            description: `SLA breached — case was due ${c.dueAt.toISOString()}`,
+        if (breached) {
+          await tx.task.create({
+            data: {
+              tenantId,
+              caseId: current.id,
+              type: "sla_breach",
+              description: `SLA breached; case was due ${dueAt.toISOString()}`,
+            },
           });
-        } catch (err) {
-          console.error(`Failed to create SLA breach task for case ${c.id}:`, err);
         }
-      } else if (isNearingBreach(c.dueAt)) {
-        warningCount++;
+        return true;
+      });
 
-        await db.auditEvent.create({
-          data: {
-            tenantId: c.tenantId,
-            entityType: "AuthorizationCase",
-            entityId: c.id,
-            action: DomainEvents.SLA_BREACH_WARNING,
-            after: { dueAt: c.dueAt.toISOString(), status: c.status },
-          },
-        });
-      }
+      if (!updated) continue;
+      if (breached) breachedCount++;
+      else warningCount++;
     }
 
-    console.log(`SLA check: ${breachedCount} breached, ${warningCount} nearing breach`);
     return { breached: breachedCount, warning: warningCount };
   },
 };

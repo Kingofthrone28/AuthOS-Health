@@ -3,6 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { getPrismaClient } from "../lib/prisma.js";
+import { withTenant } from "../lib/prisma.js";
 import { signJwt } from "../middleware/tenantAuth.js";
 import {
   discoverOidcProvider,
@@ -19,6 +20,16 @@ const loginSchema = z.object({
   tenantSlug: z.string().min(1),
 });
 
+const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+function hashRefreshToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+async function getTenantSettings(db: ReturnType<typeof getPrismaClient>, tenantId: string) {
+  return withTenant(db, tenantId, (tx) => tx.tenantSettings.findUnique({ where: { tenantId } }));
+}
+
 authRouter.post("/login", async (req, res, next) => {
   try {
     const { email, password, tenantSlug } = loginSchema.parse(req.body);
@@ -30,9 +41,9 @@ authRouter.post("/login", async (req, res, next) => {
       return;
     }
 
-    const user = await db.user.findUnique({
+    const user = await withTenant(db, tenant.id, (tx) => tx.user.findUnique({
       where: { tenantId_email: { tenantId: tenant.id, email } },
-    });
+    }));
     if (!user || !user.passwordHash) {
       res.status(401).json({ error: "Invalid credentials" });
       return;
@@ -52,6 +63,14 @@ authRouter.post("/login", async (req, res, next) => {
     });
 
     const refreshToken = crypto.randomBytes(48).toString("hex");
+    await withTenant(db, tenant.id, (tx) => tx.refreshToken.create({
+      data: {
+        tenantId: tenant.id,
+        userId: user.id,
+        tokenHash: hashRefreshToken(refreshToken),
+        expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+      },
+    }));
 
     res.json({
       token,
@@ -74,25 +93,23 @@ authRouter.get("/oidc/authorize", async (req, res, next) => {
     const { tenantSlug, redirectUri } = oidcAuthorizeSchema.parse(req.query);
     const db = getPrismaClient();
 
-    const tenant = await db.tenant.findUnique({
-      where: { slug: tenantSlug },
-      include: { settings: true },
-    });
-    if (!tenant?.settings?.ssoIssuerUrl || !tenant.settings.ssoClientId) {
+    const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug } });
+    const settings = tenant ? await getTenantSettings(db, tenant.id) : null;
+    if (!tenant || !settings?.ssoIssuerUrl || !settings.ssoClientId) {
       res.status(400).json({ error: "SSO not configured for this tenant" });
       return;
     }
 
-    const config = await discoverOidcProvider(tenant.settings.ssoIssuerUrl);
+    const config = await discoverOidcProvider(settings.ssoIssuerUrl);
     const state = Buffer.from(JSON.stringify({
       tenantId: tenant.id,
       redirectUri,
     })).toString("base64url");
 
     const authorizeUrl = buildOidcAuthorizeUrl(
-      tenant.settings.ssoIssuerUrl,
+      settings.ssoIssuerUrl,
       config.authorization_endpoint,
-      tenant.settings.ssoClientId,
+      settings.ssoClientId,
       redirectUri,
       state,
     );
@@ -118,27 +135,25 @@ authRouter.get("/oidc/callback", async (req, res, next) => {
       redirectUri: string;
     };
 
-    const tenant = await db.tenant.findUnique({
-      where: { id: stateData.tenantId },
-      include: { settings: true },
-    });
-    if (!tenant?.settings?.ssoIssuerUrl || !tenant.settings.ssoClientId || !tenant.settings.ssoClientSecret) {
+    const tenant = await db.tenant.findUnique({ where: { id: stateData.tenantId } });
+    const settings = tenant ? await getTenantSettings(db, tenant.id) : null;
+    if (!tenant || !settings?.ssoIssuerUrl || !settings.ssoClientId || !settings.ssoClientSecret) {
       res.status(400).json({ error: "SSO configuration incomplete" });
       return;
     }
 
     const tokenResponse = await exchangeOidcCode(
-      tenant.settings.ssoIssuerUrl,
-      tenant.settings.ssoClientId,
-      tenant.settings.ssoClientSecret,
+      settings.ssoIssuerUrl,
+      settings.ssoClientId,
+      settings.ssoClientSecret,
       code,
       stateData.redirectUri,
     );
 
     const claims = await verifyOidcToken(
       tokenResponse.id_token,
-      tenant.settings.ssoIssuerUrl,
-      tenant.settings.ssoClientId,
+      settings.ssoIssuerUrl,
+      settings.ssoClientId,
     );
 
     const email = claims.email;
@@ -147,19 +162,19 @@ authRouter.get("/oidc/callback", async (req, res, next) => {
       return;
     }
 
-    let user = await db.user.findUnique({
+    let user = await withTenant(db, tenant.id, (tx) => tx.user.findUnique({
       where: { tenantId_email: { tenantId: tenant.id, email } },
-    });
+    }));
 
     if (!user) {
-      user = await db.user.create({
+      user = await withTenant(db, tenant.id, (tx) => tx.user.create({
         data: {
           tenantId: tenant.id,
           email,
           name: (claims.name as string) ?? email,
           role: "auth_specialist",
         },
-      });
+      }));
     }
 
     const jwt = signJwt({
@@ -187,15 +202,13 @@ authRouter.get("/saml/login", async (req, res, next) => {
     const redirectUri = z.string().url().parse(req.query["redirectUri"]);
     const db = getPrismaClient();
 
-    const tenant = await db.tenant.findUnique({
-      where: { slug: tenantSlug },
-      include: { settings: true },
-    });
-    if (!tenant?.settings?.ssoProvider || tenant.settings.ssoProvider !== "saml") {
+    const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug } });
+    const settings = tenant ? await getTenantSettings(db, tenant.id) : null;
+    if (!tenant || settings?.ssoProvider !== "saml") {
       res.status(400).json({ error: "SAML not configured for this tenant" });
       return;
     }
-    if (!tenant.settings.ssoIssuerUrl || !tenant.settings.ssoClientSecret) {
+    if (!settings.ssoIssuerUrl || !settings.ssoClientSecret) {
       res.status(400).json({ error: "SAML configuration incomplete" });
       return;
     }
@@ -204,9 +217,9 @@ authRouter.get("/saml/login", async (req, res, next) => {
 
     const WEB_URL = process.env["WEB_URL"] ?? "http://localhost:3000";
     const saml = createSamlClient({
-      entryPoint: tenant.settings.ssoIssuerUrl,
+      entryPoint: settings.ssoIssuerUrl,
       issuer: `${WEB_URL}/saml/metadata/${tenant.slug}`,
-      cert: tenant.settings.ssoClientSecret,
+      cert: settings.ssoClientSecret,
       callbackUrl: `${process.env["API_URL"] ?? "http://localhost:3001"}/auth/saml/callback`,
     });
 
@@ -237,11 +250,9 @@ authRouter.post("/saml/callback", async (req, res, next) => {
     };
 
     const db = getPrismaClient();
-    const tenant = await db.tenant.findUnique({
-      where: { id: stateData.tenantId },
-      include: { settings: true },
-    });
-    if (!tenant?.settings?.ssoIssuerUrl || !tenant.settings.ssoClientSecret) {
+    const tenant = await db.tenant.findUnique({ where: { id: stateData.tenantId } });
+    const settings = tenant ? await getTenantSettings(db, tenant.id) : null;
+    if (!tenant || !settings?.ssoIssuerUrl || !settings.ssoClientSecret) {
       res.status(400).json({ error: "SAML configuration incomplete" });
       return;
     }
@@ -250,27 +261,27 @@ authRouter.post("/saml/callback", async (req, res, next) => {
 
     const WEB_URL = process.env["WEB_URL"] ?? "http://localhost:3000";
     const saml = createSamlClient({
-      entryPoint: tenant.settings.ssoIssuerUrl,
+      entryPoint: settings.ssoIssuerUrl,
       issuer: `${WEB_URL}/saml/metadata/${tenant.slug}`,
-      cert: tenant.settings.ssoClientSecret,
+      cert: settings.ssoClientSecret,
       callbackUrl: `${process.env["API_URL"] ?? "http://localhost:3001"}/auth/saml/callback`,
     });
 
     const profile = await validateSamlResponse(saml, { SAMLResponse: samlResponse });
     const email = profile.email ?? profile.nameID;
 
-    let user = await db.user.findUnique({
+    let user = await withTenant(db, tenant.id, (tx) => tx.user.findUnique({
       where: { tenantId_email: { tenantId: tenant.id, email } },
-    });
+    }));
     if (!user) {
-      user = await db.user.create({
+      user = await withTenant(db, tenant.id, (tx) => tx.user.create({
         data: {
           tenantId: tenant.id,
           email,
           name: [profile.firstName, profile.lastName].filter(Boolean).join(" ") || email,
           role: "auth_specialist",
         },
-      });
+      }));
     }
 
     const token = signJwt({
@@ -294,11 +305,9 @@ authRouter.get("/saml/metadata/:tenantSlug", async (req, res, next) => {
     const tenantSlug = req.params["tenantSlug"]!;
     const db = getPrismaClient();
 
-    const tenant = await db.tenant.findUnique({
-      where: { slug: tenantSlug },
-      include: { settings: true },
-    });
-    if (!tenant?.settings?.ssoIssuerUrl || !tenant.settings.ssoClientSecret) {
+    const tenant = await db.tenant.findUnique({ where: { slug: tenantSlug } });
+    const settings = tenant ? await getTenantSettings(db, tenant.id) : null;
+    if (!tenant || !settings?.ssoIssuerUrl || !settings.ssoClientSecret) {
       res.status(404).json({ error: "SAML not configured" });
       return;
     }
@@ -307,9 +316,9 @@ authRouter.get("/saml/metadata/:tenantSlug", async (req, res, next) => {
 
     const WEB_URL = process.env["WEB_URL"] ?? "http://localhost:3000";
     const saml = createSamlClient({
-      entryPoint: tenant.settings.ssoIssuerUrl,
+      entryPoint: settings.ssoIssuerUrl,
       issuer: `${WEB_URL}/saml/metadata/${tenant.slug}`,
-      cert: tenant.settings.ssoClientSecret,
+      cert: settings.ssoClientSecret,
       callbackUrl: `${process.env["API_URL"] ?? "http://localhost:3001"}/auth/saml/callback`,
     });
 
@@ -331,20 +340,42 @@ authRouter.post("/token/refresh", async (req, res, next) => {
     }).parse(req.body);
 
     const db = getPrismaClient();
-    const user = await db.user.findFirst({ where: { id: userId, tenantId } });
-    if (!user) {
+    const stored = await withTenant(db, tenantId, (tx) => tx.refreshToken.findFirst({
+      where: {
+        tenantId,
+        tokenHash: hashRefreshToken(refreshToken),
+        userId,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      include: { user: true },
+    }));
+    if (!stored) {
       res.status(401).json({ error: "Invalid refresh" });
       return;
     }
 
-    const token = signJwt({
-      sub: user.id,
-      tenantId,
-      role: user.role,
-      email: user.email,
+    const nextRefreshToken = crypto.randomBytes(48).toString("hex");
+    await withTenant(db, tenantId, async (tx) => {
+      await tx.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: new Date() } });
+      await tx.refreshToken.create({
+        data: {
+          tenantId,
+          userId: stored.userId,
+          tokenHash: hashRefreshToken(nextRefreshToken),
+          expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
+        },
+      });
     });
 
-    res.json({ token, refreshToken });
+    const token = signJwt({
+      sub: stored.user.id,
+      tenantId,
+      role: stored.user.role,
+      email: stored.user.email,
+    });
+
+    res.json({ token, refreshToken: nextRefreshToken });
   } catch (err) {
     next(err);
   }

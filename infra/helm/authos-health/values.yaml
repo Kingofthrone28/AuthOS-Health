@@ -100,6 +100,7 @@ ingress:
 secrets:
   jwtSecret: ""
   internalSecret: ""
+  tenantEncryptionKey: ""
 
 singleTenant:
   tenantName: ""

@@ -7,8 +7,7 @@ interface ApprovalPanelProps {
 }
 
 export function ApprovalPanel({ status, authNumber }: ApprovalPanelProps) {
-  if (status !== "approved") return null;
-  if (!authNumber) return null;
+  if (status !== "approved" || !authNumber) return;
 
   return (
     <section className="bg-green-50 border border-green-200 rounded-lg p-5">

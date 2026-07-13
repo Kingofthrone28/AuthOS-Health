@@ -1,6 +1,4 @@
 import { Router } from "express";
-import * as fs from "node:fs";
-import * as path from "node:path";
 import { ctx } from "../lib/context.js";
 import { ApiError } from "../middleware/errorHandler.js";
 
@@ -19,24 +17,15 @@ documentsRouter.get("/", async (req, res, next) => {
 documentsRouter.get("/:id/download", async (req, res, next) => {
   try {
     const tenantId = res.locals["tenantId"] as string;
-    const attachment = await ctx.attachmentService.getAttachment(tenantId, req.params["id"]!);
-    if (!attachment) throw new ApiError(404, "Attachment not found");
+    const result = await ctx.attachmentService.readAttachment(tenantId, req.params["id"]!);
+    if (!result) throw new ApiError(404, "Attachment not found");
 
-    const filePath = path.resolve(attachment.storageRef);
-    try {
-      await fs.promises.access(filePath, fs.constants.R_OK);
-    } catch {
-      throw new ApiError(404, "File not found on disk");
-    }
-
-    const stat = await fs.promises.stat(filePath);
-    res.setHeader("Content-Type", attachment.mimeType ?? "application/octet-stream");
-    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Type", result.attachment.mimeType ?? "application/octet-stream");
+    res.setHeader("Content-Length", result.content.length);
     res.setHeader(
       "Content-Disposition",
-      `attachment; filename="${encodeURIComponent(attachment.fileName)}"`,
+      `attachment; filename="${encodeURIComponent(result.attachment.fileName)}"`,
     );
-
-    fs.createReadStream(filePath).pipe(res);
+    res.send(result.content);
   } catch (err) { next(err); }
 });

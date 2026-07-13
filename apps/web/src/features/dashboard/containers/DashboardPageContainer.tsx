@@ -31,6 +31,7 @@ export async function DashboardPageContainer({ filters }: DashboardPageContainer
   try {
     const raw = await apiFetch<ApiKpi>("/api/analytics/kpi", {
       tenantId: session.tenantId,
+      accessToken: session.accessToken,
     });
     kpi = raw;
   } catch {

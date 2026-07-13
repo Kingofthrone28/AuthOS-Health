@@ -1,10 +1,10 @@
-import { type PrismaClient, Prisma } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import type { AuditEmitter } from "@authos/audit";
 import { buildAuditEvent } from "@authos/audit";
 import type { AuditEvent } from "@authos/shared-types";
 
 export class AuditService implements AuditEmitter {
-  constructor(private readonly db: PrismaClient) {}
+  constructor(private readonly db: PrismaClient | Prisma.TransactionClient) {}
 
   async emit(fields: Omit<AuditEvent, "id" | "occurredAt">): Promise<void> {
     const event = buildAuditEvent(fields);
