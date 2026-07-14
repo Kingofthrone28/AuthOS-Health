@@ -441,8 +441,20 @@ npm install
 
 ```bash
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/authos_health \
-npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
+npm run prisma:migrate:deploy -w @authos/api
 ```
+
+Databases created from the migration history used before `0_init` must be
+backed up and reconciled once before deployment. After confirming the existing
+schema already matches `apps/api/prisma/schema.prisma`, run:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/authos_health \
+npm run prisma:migrate:baseline -w @authos/api
+```
+
+Do not run the baseline command on an empty database; migration deployment will
+apply `0_init` normally.
 
 **4. Bootstrap dev tenant and seed data**
 

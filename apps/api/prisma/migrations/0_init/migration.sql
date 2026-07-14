@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "UserRole" AS ENUM ('admin', 'clinician', 'auth_specialist', 'manager', 'read_only');
 
@@ -20,7 +23,13 @@ CREATE TYPE "ExtractedEventType" AS ENUM ('reference_number', 'auth_status', 'mi
 CREATE TYPE "ReviewStatus" AS ENUM ('pending', 'approved', 'rejected');
 
 -- CreateEnum
+CREATE TYPE "CallTranscriptStatus" AS ENUM ('IN_PROGRESS', 'COMPLETED');
+
+-- CreateEnum
 CREATE TYPE "RequirementSource" AS ENUM ('crd', 'dtr', 'manual');
+
+-- CreateEnum
+CREATE TYPE "SsoProvider" AS ENUM ('oidc', 'saml');
 
 -- CreateTable
 CREATE TABLE "Tenant" (
@@ -33,15 +42,46 @@ CREATE TABLE "Tenant" (
 );
 
 -- CreateTable
+CREATE TABLE "TenantSettings" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "ssoProvider" "SsoProvider",
+    "ssoIssuerUrl" TEXT,
+    "ssoClientId" TEXT,
+    "ssoClientSecret" TEXT,
+    "fhirServerUrl" TEXT,
+    "payerEndpoint" TEXT,
+    "retentionDays" INTEGER NOT NULL DEFAULT 365,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "TenantSettings_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "User" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
     "email" TEXT NOT NULL,
     "name" TEXT NOT NULL,
     "role" "UserRole" NOT NULL DEFAULT 'auth_specialist',
+    "passwordHash" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "User_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "RefreshToken" (
+    "id" TEXT NOT NULL,
+    "tenantId" TEXT NOT NULL,
+    "userId" TEXT NOT NULL,
+    "tokenHash" TEXT NOT NULL,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "revokedAt" TIMESTAMP(3),
+
+    CONSTRAINT "RefreshToken_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -61,6 +101,7 @@ CREATE TABLE "PatientRef" (
 CREATE TABLE "CoverageRef" (
     "id" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
+    "fhirId" TEXT,
     "patientRefId" TEXT NOT NULL,
     "payerName" TEXT NOT NULL,
     "payerId" TEXT,
@@ -98,11 +139,16 @@ CREATE TABLE "AuthorizationCase" (
     "status" "CaseStatus" NOT NULL DEFAULT 'new',
     "payerName" TEXT NOT NULL,
     "payerCaseRef" TEXT,
+    "approvalNumber" TEXT,
     "dueAt" TIMESTAMP(3),
     "createdBy" TEXT NOT NULL,
     "assignedTo" TEXT,
+    "escalatedAt" TIMESTAMP(3),
+    "slaWarningAt" TIMESTAMP(3),
+    "lastFollowUpAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
+    "version" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "AuthorizationCase_pkey" PRIMARY KEY ("id")
 );
@@ -129,8 +175,13 @@ CREATE TABLE "Submission" (
     "tenantId" TEXT NOT NULL,
     "protocol" "SubmissionProtocol" NOT NULL,
     "payloadRef" TEXT,
+    "status" TEXT NOT NULL DEFAULT 'pending',
+    "retryCount" INTEGER NOT NULL DEFAULT 0,
+    "maxRetries" INTEGER NOT NULL DEFAULT 3,
+    "nextRetryAt" TIMESTAMP(3),
     "submittedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "submittedBy" TEXT NOT NULL,
+    "version" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "Submission_pkey" PRIMARY KEY ("id")
 );
@@ -156,12 +207,16 @@ CREATE TABLE "Task" (
     "id" TEXT NOT NULL,
     "caseId" TEXT NOT NULL,
     "tenantId" TEXT NOT NULL,
+    "requirementId" TEXT,
     "type" TEXT NOT NULL,
     "description" TEXT NOT NULL,
+    "status" TEXT NOT NULL DEFAULT 'open',
     "assignedTo" TEXT,
+    "completedBy" TEXT,
     "completedAt" TIMESTAMP(3),
     "dueAt" TIMESTAMP(3),
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "version" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "Task_pkey" PRIMARY KEY ("id")
 );
@@ -169,10 +224,11 @@ CREATE TABLE "Task" (
 -- CreateTable
 CREATE TABLE "CallTranscript" (
     "id" TEXT NOT NULL,
-    "caseId" TEXT NOT NULL,
+    "caseId" TEXT,
     "tenantId" TEXT NOT NULL,
     "callSid" TEXT NOT NULL,
     "direction" TEXT NOT NULL,
+    "status" "CallTranscriptStatus" NOT NULL DEFAULT 'COMPLETED',
     "startedAt" TIMESTAMP(3) NOT NULL,
     "endedAt" TIMESTAMP(3),
     "durationSeconds" INTEGER,
@@ -208,6 +264,7 @@ CREATE TABLE "Attachment" (
     "mimeType" TEXT NOT NULL,
     "sizeBytes" INTEGER NOT NULL,
     "storageRef" TEXT NOT NULL,
+    "encrypted" BOOLEAN NOT NULL DEFAULT false,
     "classification" TEXT,
     "uploadedBy" TEXT NOT NULL,
     "uploadedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -235,10 +292,22 @@ CREATE TABLE "AuditEvent" (
 CREATE UNIQUE INDEX "Tenant_slug_key" ON "Tenant"("slug");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "TenantSettings_tenantId_key" ON "TenantSettings"("tenantId");
+
+-- CreateIndex
 CREATE INDEX "User_tenantId_idx" ON "User"("tenantId");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "User_tenantId_email_key" ON "User"("tenantId", "email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "RefreshToken_tokenHash_key" ON "RefreshToken"("tokenHash");
+
+-- CreateIndex
+CREATE INDEX "RefreshToken_tenantId_userId_idx" ON "RefreshToken"("tenantId", "userId");
+
+-- CreateIndex
+CREATE INDEX "RefreshToken_tenantId_expiresAt_idx" ON "RefreshToken"("tenantId", "expiresAt");
 
 -- CreateIndex
 CREATE INDEX "PatientRef_tenantId_idx" ON "PatientRef"("tenantId");
@@ -248,6 +317,9 @@ CREATE UNIQUE INDEX "PatientRef_tenantId_fhirId_key" ON "PatientRef"("tenantId",
 
 -- CreateIndex
 CREATE INDEX "CoverageRef_tenantId_idx" ON "CoverageRef"("tenantId");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "CoverageRef_tenantId_fhirId_key" ON "CoverageRef"("tenantId", "fhirId");
 
 -- CreateIndex
 CREATE INDEX "OrderRef_tenantId_idx" ON "OrderRef"("tenantId");
@@ -274,19 +346,31 @@ CREATE INDEX "AuthorizationRequirement_tenantId_idx" ON "AuthorizationRequiremen
 CREATE INDEX "Submission_caseId_idx" ON "Submission"("caseId");
 
 -- CreateIndex
+CREATE INDEX "Submission_tenantId_status_idx" ON "Submission"("tenantId", "status");
+
+-- CreateIndex
 CREATE INDEX "PayerResponse_caseId_idx" ON "PayerResponse"("caseId");
 
 -- CreateIndex
 CREATE INDEX "Task_caseId_idx" ON "Task"("caseId");
 
 -- CreateIndex
+CREATE INDEX "Task_tenantId_requirementId_idx" ON "Task"("tenantId", "requirementId");
+
+-- CreateIndex
 CREATE INDEX "Task_tenantId_assignedTo_idx" ON "Task"("tenantId", "assignedTo");
+
+-- CreateIndex
+CREATE INDEX "Task_tenantId_status_idx" ON "Task"("tenantId", "status");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "CallTranscript_callSid_key" ON "CallTranscript"("callSid");
 
 -- CreateIndex
 CREATE INDEX "CallTranscript_caseId_idx" ON "CallTranscript"("caseId");
+
+-- CreateIndex
+CREATE INDEX "CallTranscript_tenantId_status_idx" ON "CallTranscript"("tenantId", "status");
 
 -- CreateIndex
 CREATE INDEX "ExtractedEvent_caseId_idx" ON "ExtractedEvent"("caseId");
@@ -310,7 +394,13 @@ CREATE INDEX "AuditEvent_tenantId_entityType_idx" ON "AuditEvent"("tenantId", "e
 CREATE INDEX "AuditEvent_occurredAt_idx" ON "AuditEvent"("occurredAt");
 
 -- AddForeignKey
+ALTER TABLE "TenantSettings" ADD CONSTRAINT "TenantSettings_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
 ALTER TABLE "User" ADD CONSTRAINT "User_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "RefreshToken" ADD CONSTRAINT "RefreshToken_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "AuthorizationCase" ADD CONSTRAINT "AuthorizationCase_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -337,7 +427,10 @@ ALTER TABLE "PayerResponse" ADD CONSTRAINT "PayerResponse_submissionId_fkey" FOR
 ALTER TABLE "Task" ADD CONSTRAINT "Task_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "AuthorizationCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "CallTranscript" ADD CONSTRAINT "CallTranscript_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "AuthorizationCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Task" ADD CONSTRAINT "Task_requirementId_fkey" FOREIGN KEY ("requirementId") REFERENCES "AuthorizationRequirement"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "CallTranscript" ADD CONSTRAINT "CallTranscript_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "AuthorizationCase"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ExtractedEvent" ADD CONSTRAINT "ExtractedEvent_transcriptId_fkey" FOREIGN KEY ("transcriptId") REFERENCES "CallTranscript"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -347,3 +440,114 @@ ALTER TABLE "Attachment" ADD CONSTRAINT "Attachment_caseId_fkey" FOREIGN KEY ("c
 
 -- AddForeignKey
 ALTER TABLE "AuditEvent" ADD CONSTRAINT "AuditEvent_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- PostgreSQL security controls not represented by the Prisma schema.
+-- Every application transaction must set app.current_tenant with SET LOCAL.
+ALTER TABLE "AuthorizationCase" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "AuthorizationRequirement" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Submission" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "PayerResponse" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Task" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CallTranscript" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ExtractedEvent" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Attachment" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "AuditEvent" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "User" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "RefreshToken" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "PatientRef" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "CoverageRef" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "OrderRef" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "TenantSettings" ENABLE ROW LEVEL SECURITY;
+
+ALTER TABLE "AuthorizationCase" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "AuthorizationRequirement" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "Submission" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PayerResponse" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "Task" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "CallTranscript" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "ExtractedEvent" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "Attachment" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "AuditEvent" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "User" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "RefreshToken" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "PatientRef" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "CoverageRef" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "OrderRef" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "TenantSettings" FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation_authorization_case ON "AuthorizationCase"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_authorization_requirement ON "AuthorizationRequirement"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_submission ON "Submission"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_payer_response ON "PayerResponse"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_task ON "Task"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_call_transcript ON "CallTranscript"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_extracted_event ON "ExtractedEvent"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_attachment ON "Attachment"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_audit_event ON "AuditEvent"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_user ON "User"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY refresh_token_tenant_isolation ON "RefreshToken"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_patient_ref ON "PatientRef"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_coverage_ref ON "CoverageRef"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_order_ref ON "OrderRef"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE POLICY tenant_isolation_tenant_settings ON "TenantSettings"
+  USING ("tenantId" = current_setting('app.current_tenant', true))
+  WITH CHECK ("tenantId" = current_setting('app.current_tenant', true));
+
+CREATE OR REPLACE FUNCTION prevent_audit_event_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF COALESCE(current_setting('app.environment', true), 'development') <> 'production' THEN
+    RETURN OLD;
+  END IF;
+  RAISE EXCEPTION 'AuditEvent rows are immutable';
+END;
+$$;
+
+CREATE TRIGGER audit_event_immutable
+  BEFORE UPDATE OR DELETE ON "AuditEvent"
+  FOR EACH ROW EXECUTE FUNCTION prevent_audit_event_mutation();
+

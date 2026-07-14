@@ -6,6 +6,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
+    "prisma:migrate:baseline": "prisma migrate resolve --applied 0_init --schema=prisma/schema.prisma",
     "prisma:migrate:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
     "build": "tsc",
     "dev": "tsx watch --env-file=.env src/index.ts",
